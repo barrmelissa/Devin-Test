@@ -26,13 +26,19 @@ const stamp = () => new Date().toISOString().slice(0, 16).replace("T", " ");
 const noteLine = (user: Principal, text: string) => `[${user.name}, ${stamp()}] ${text}`;
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
-export async function listRefunds(user: Principal, filters: { status?: string; reason?: string } = {}) {
+export async function listRefunds(user: Principal, filters: { status?: string; reason?: string; processedSince?: Date } = {}) {
   return listRecords(user, RefundEntity, {
-    where: { ...(filters.status ? { status: filters.status } : {}), ...(filters.reason ? { reason: filters.reason } : {}) },
+    where: {
+      ...(filters.status ? { status: filters.status } : {}),
+      ...(filters.reason ? { reason: filters.reason } : {}),
+      ...(filters.processedSince ? { processedAt: { gte: filters.processedSince } } : {}),
+    },
     include: { requestedBy: true, approvedBy: true },
     orderBy: { createdAt: "desc" },
   }) as Promise<RefundWithUsers[]>;
 }
+
+export const weekAgo = (now = new Date()) => new Date(now.getTime() - WEEK_MS);
 
 /** Dashboard tiles. "Processed this week" = processed in the last 7 days. */
 export async function refundSummary(user: Principal, now = new Date()) {

@@ -5,7 +5,7 @@ import { appHref } from "@/foundation/registry";
 import { Banner, DataTable, FilterBar, PageHeader, StatusBadge, buttonClass, humanize } from "@/foundation/ui";
 import { AUTO_APPROVE_LIMIT_CENTS } from "../config";
 import { APP_ID, REFUND_REASONS, REFUND_STATUSES, RefundEntity } from "../entity";
-import { formatMoney, listRefunds, needsApproval, reasonLabel, refundSummary, type RefundWithUsers } from "../service";
+import { formatMoney, listRefunds, needsApproval, reasonLabel, refundSummary, weekAgo, type RefundWithUsers } from "../service";
 import { REFUND_TONES } from "./tones";
 
 function Tile({ label, value, href, tone }: { label: string; value: number; href: string; tone: string }) {
@@ -19,7 +19,7 @@ function Tile({ label, value, href, tone }: { label: string; value: number; href
 
 export async function List({ user, searchParams }: Omit<AppScreenProps, "path">) {
   const [refunds, summary] = await Promise.all([
-    listRefunds(user, { status: searchParams.status, reason: searchParams.reason }),
+    listRefunds(user, { status: searchParams.status, reason: searchParams.reason, processedSince: searchParams.window === "7d" ? weekAgo() : undefined }),
     refundSummary(user),
   ]);
   const base = appHref(APP_ID);
@@ -34,10 +34,15 @@ export async function List({ user, searchParams }: Omit<AppScreenProps, "path">)
       <Banner searchParams={searchParams} />
       <div className="grid gap-4 sm:grid-cols-3">
         <Tile label="Pending approval" value={summary.pendingApproval} href={`${base}?status=submitted`} tone="text-amber-700" />
-        <Tile label="Processed this week" value={summary.processedThisWeek} href={`${base}?status=processed`} tone="text-sky-700" />
+        <Tile label="Processed this week" value={summary.processedThisWeek} href={`${base}?status=processed&window=7d`} tone="text-sky-700" />
         <Tile label="Failed" value={summary.failed} href={`${base}?status=failed`} tone="text-rose-700" />
       </div>
+      {searchParams.window === "7d" && (
+        <p className="text-sm text-slate-600">Showing refunds processed in the last 7 days. <Link href={`${base}?status=processed`} className="text-indigo-700 hover:underline">Show all processed</Link></p>
+      )}
+      {/* Keyed so the selects reset when the URL changes via a tile link (defaultValue only applies on mount). */}
       <FilterBar
+        key={new URLSearchParams(Object.entries(searchParams).filter((e): e is [string, string] => !!e[1])).toString()}
         values={searchParams}
         filters={[
           { name: "status", label: "Status", options: REFUND_STATUSES.map((s) => ({ value: s, label: humanize(s) })) },

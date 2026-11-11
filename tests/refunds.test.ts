@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { addNote, createRefund, getRefund, getRefundHistory, listRefunds, processRefund, refundSummary, transitionRefund } from "@/apps/refunds/service";
+import { addNote, createRefund, getRefund, getRefundHistory, listRefunds, processRefund, refundSummary, transitionRefund, weekAgo } from "@/apps/refunds/service";
 import { ForbiddenError, MakerCheckerError, TransitionError, ValidationError } from "@/foundation/errors";
 import { getAdapters, setAdapters } from "@/foundation/integrations";
 import { ana, auditCount, db, fatima, grace, makeRefund, marcus, maya, priya, sofia, tom } from "./helpers";
@@ -252,5 +252,7 @@ describe("dashboard summary", () => {
     await makeRefund({ status: "processed", processedAt: new Date(now.getTime() - 10 * 86_400_000) });
     await makeRefund({ status: "failed" });
     expect(await refundSummary(maya, now)).toEqual({ pendingApproval: 2, processedThisWeek: 1, failed: 1 });
+    expect(await listRefunds(maya, { status: "processed", processedSince: weekAgo(now) })).toHaveLength(1);
+    expect(await listRefunds(maya, { status: "processed" })).toHaveLength(2);
   });
 });
