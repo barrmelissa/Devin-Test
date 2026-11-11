@@ -23,11 +23,23 @@ Use the **Signed in as** switcher in the header to change user. Seeded users (tw
 | Role | Users | What they see in KYC |
 |---|---|---|
 | analyst | Ana, Omar | Only cases assigned to them; tax ID masked; can start review, run vendor check, add notes, submit a recommendation, escalate |
-| senior_reviewer | Sofia, Raj | All cases; tax ID visible; approve or reject pending cases (not ones they submitted); send back; resume escalated |
-| admin | Grace, Hiro | Everything plus the audit log; still bound by maker-checker |
+| senior_reviewer | Sofia, Raj | All cases; tax ID visible; create cases ("New case"); approve or reject pending cases (not ones they submitted); send back; resume escalated |
+| admin | Grace, Hiro | Everything plus the audit log and "Simulate new signup"; still bound by maker-checker |
 | auditor | Maya, Leo | Read-only access to all cases (tax ID masked) and the audit log |
 
 Demo tip: open "Chen Wei" as Sofia. She submitted it, so Approve is disabled. Switch to Raj and approve it, then check the case history and **Audit log**. The mock Slack message prints in the `npm run dev` console.
+
+### Creating cases
+
+- **New case form** (`/apps/kyc/new`, admin and senior reviewer): customer name, country, tax ID, risk score (0–100), assigned analyst, notes. Validated server-side and audited as `create`.
+- **Automated intake** (`POST /api/kyc/intake`): simulates the onboarding system. Creates a `new` case, runs the mock vendor check automatically, and audits it as `intake` by the "Onboarding system" service account:
+  ```bash
+  curl -X POST localhost:3000/api/kyc/intake \
+    -H "Authorization: Bearer $(grep ONBOARDING_SERVICE_TOKEN .env | cut -d'"' -f2)" \
+    -H "Content-Type: application/json" \
+    -d '{"customerName":"Nordic Pay AB","country":"SE","taxId":"SE556677889901","riskScore":35}'
+  ```
+  Admins can click **Simulate new signup** on the queue to send randomized data through the same endpoint with their session.
 
 ## Architecture
 
@@ -41,11 +53,13 @@ src/
     approvals/           defineWorkflow, transition checks, maker-checker
     integrations/        adapter interfaces, mock adapters, config.ts (the one place env/secrets are read)
     ui/                  DataTable, DetailPanel, Form, ActionButtons, StatusBadge, FilterBar, AuditTrail, ...
+    forms/               FieldSpec + parseInput (one field list drives create forms and server-side validation)
+    api/                 defineApi + request auth (service-account bearer token or same-origin session)
     registry/            AppManifest type + defineApp
   apps/
     index.ts             app registry: one line per app; drives the nav and routing
     kyc/                 entity.ts (workflow + policy), service.ts, actions.ts, screens/, manifest.tsx
-  app/                   Next.js routes: layout (header, nav), /apps/[app]/[[...path]] (serves every app), /audit
+  app/                   Next.js routes: layout (header, nav), /apps/[app]/[[...path]] (serves every app), /api/[app]/[...route] (app endpoints), /audit
 prisma/                  schema, migrations, seed
 tests/                   Vitest suites
 ```
@@ -58,7 +72,7 @@ Key pieces:
 - **Audit log.** Append-only (no update/delete path exists): actor id/name/role, app, entity type and id, action, before JSON, after JSON, timestamp. Sensitive fields are stored in masked form only (e.g. `••••••7365`), so audit snapshots never hold plaintext or ciphertext. The `/audit` page (admin and auditor) filters by app, actor and entity, and each record has its own history panel.
 - **Approvals.** Each app declares statuses and transitions (from → to, allowed roles). A transition marked `submits` records the maker; one marked `requiresChecker` cannot be done by that same user. Invalid transitions, disallowed roles and maker-checker violations are rejected server-side.
 - **Integrations.** One adapter interface per external system (`KycVendorAdapter`, `PaymentsAdapter`, `NotificationsAdapter`), all mocked. Notifications log "Slack" messages to the console and the `Notification` table. Config comes from `.env` via `integrations/config.ts`.
-- **Identity.** `getCurrentUser()` reads a cookie set by the header switcher. **This is where Okta / Entra ID SSO plugs in**: replace it with an OIDC session lookup and map IdP groups to the roles in `roles.ts`.
+- **Identity.** `getCurrentUser()` reads a cookie set by the header switcher. **This is where Okta / Entra ID SSO plugs in**: replace it with an OIDC session lookup and map IdP groups to the roles in `roles.ts`. API callers authenticate as service accounts (`identity/service-accounts.ts`, bearer token from `.env`) with the `integration` role, so their writes are access-checked and audited too.
 
 ### How this maps to Power Apps
 
