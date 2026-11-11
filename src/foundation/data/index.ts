@@ -97,8 +97,11 @@ export type UpdateOptions<T> = {
   action?: string;
   /** Reject the update unless the record is currently in one of these statuses. */
   requireStatus?: readonly string[];
-  /** Compute the patch from the current (unmasked) record, e.g. to append to a field. */
-  patch?: (current: T) => Partial<T>;
+  /**
+   * Compute the patch from the current, unmasked record (e.g. append to a field, or call an
+   * adapter that needs the real value). Runs inside the transaction after the access check.
+   */
+  patch?: (current: T) => Partial<T> | Promise<Partial<T>>;
 };
 
 export async function updateRecord<T>(
@@ -120,7 +123,7 @@ export async function updateRecord<T>(
         throw new TransitionError(`Cannot ${opts.action ?? "update"} while status is "${before[wf.statusField]}".`);
       }
     }
-    const patch = { ...data, ...(opts.patch ? opts.patch(before as unknown as T) : {}) };
+    const patch = { ...data, ...(opts.patch ? await opts.patch(before as unknown as T) : {}) };
     const after = await delegate(tx, asDef(entity)).update({ where: { id }, data: patch });
     await writeAuditEntry(tx, {
       actor: user, app: entity.app, entityType: entity.type, entityId: id,
