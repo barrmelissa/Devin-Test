@@ -6,6 +6,7 @@ import { writeAuditEntry } from "../audit/writer";
 import { decryptField, encryptField } from "../crypto";
 import { db, type Tx } from "../db";
 import { NotFoundError, TransitionError } from "../errors";
+import { parseInput, type FieldSpec, type ParsedInput } from "../forms";
 import type { Principal } from "../identity/types";
 import type { EntityDef } from "./entities";
 
@@ -116,6 +117,9 @@ export async function createRecord<T>(
   if (wf && payload[wf.statusField] !== wf.initial) {
     throw new TransitionError(`New ${entity.type} records must start in "${wf.initial}".`);
   }
+  if (wf && payload[wf.submitterField] != null) {
+    throw new TransitionError("The submitter is recorded by transitionRecord(), not on create.");
+  }
   const created = await db.$transaction(async (tx) => {
     const row = fromStorage(entity, await delegate(tx, asDef(entity)).create({ data: toStorage(entity, payload) }));
     await writeAuditEntry(tx, {
@@ -125,6 +129,34 @@ export async function createRecord<T>(
     return row;
   });
   return maskRecord(user, entity.policy, created as unknown as T);
+}
+
+export type CreateFromInputOptions<T> = {
+  /** Audit action name, e.g. "intake". Defaults to "create". */
+  action?: string;
+  /**
+   * Map validated input to the record (rename, add derived fields, call an adapter that needs
+   * the real values). Runs after the access check and validation, outside the DB transaction.
+   */
+  build?: (input: ParsedInput) => Partial<T> | Promise<Partial<T>>;
+};
+
+/**
+ * The governed create flow: `create` permission -> validate untrusted input against the field
+ * specs -> build the record -> createRecord (initial status, encryption, exactly one audit entry).
+ * The access check runs first, so a caller without `create` learns nothing from validation errors.
+ */
+export async function createFromInput<T>(
+  user: Principal,
+  entity: EntityDef<T>,
+  fields: FieldSpec[],
+  input: Record<string, unknown>,
+  opts: CreateFromInputOptions<T> = {},
+): Promise<T> {
+  assertCan(user, "create", { entity });
+  const values = parseInput(fields, input);
+  const data = opts.build ? await opts.build(values) : (values as Partial<T>);
+  return createRecord(user, entity, data, { action: opts.action });
 }
 
 export type UpdateOptions<T> = {
