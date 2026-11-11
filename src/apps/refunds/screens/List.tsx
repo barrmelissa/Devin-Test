@@ -66,7 +66,7 @@ export async function List({ user, searchParams }: Omit<AppScreenProps, "path">)
           { key: "createdAt", header: "Created", render: (r) => r.createdAt.toLocaleDateString() },
         ]}
       />
-      <p className="text-xs text-slate-500">{refunds.length} refund{refunds.length === 1 ? "" : "s"}. ● = over {formatMoney(AUTO_APPROVE_LIMIT_CENTS)}, requires approval.</p>
+      <p className="text-xs text-slate-500">{refunds.length} refund{refunds.length === 1 ? "" : "s"}. <span className="text-amber-700">●</span> = over {formatMoney(AUTO_APPROVE_LIMIT_CENTS)}, requires approval.</p>
     </>
   );
 }
