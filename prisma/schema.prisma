@@ -17,6 +17,8 @@ model User {
 
   assignedKycCases  KycCase[] @relation("KycAssignedAnalyst")
   submittedKycCases KycCase[] @relation("KycSubmittedBy")
+  requestedRefunds  RefundRequest[] @relation("RefundRequestedBy")
+  approvedRefunds   RefundRequest[] @relation("RefundApprovedBy")
 
   changedFeatureFlags      FeatureFlag[] @relation("FlagLastChangedBy")
   requestedFlagProdChanges FeatureFlag[] @relation("FlagProdChangeRequestedBy")
@@ -73,6 +75,34 @@ model KycCase {
 
   @@index([status])
   @@index([assignedAnalystId])
+}
+
+// ---- App: Refunds dashboard ----
+// Money is stored in integer cents. requestedById is the workflow's maker (maker-checker).
+model RefundRequest {
+  id                  String    @id @default(cuid())
+  customerName        String
+  transactionId       String
+  originalAmountCents Int
+  refundAmountCents   Int
+  currency            String    @default("USD")
+  reason              String // duplicate_charge | fraud | service_issue | other
+  notes               String    @default("")
+  status              String    @default("submitted")
+  requestedById       String
+  requestedBy         User      @relation("RefundRequestedBy", fields: [requestedById], references: [id])
+  approvedById        String?
+  approvedBy          User?     @relation("RefundApprovedBy", fields: [approvedById], references: [id])
+  autoApproved        Boolean   @default(false)
+  providerStatus      String? // succeeded | failed
+  providerRefundId    String?
+  providerMessage     String?
+  processedAt         DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([status])
+  @@index([requestedById])
 }
 
 // ---- App: Feature-flag admin ----

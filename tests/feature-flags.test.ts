@@ -5,7 +5,7 @@ import {
 } from "@/apps/feature-flags/service";
 import { ForbiddenError, MakerCheckerError, TransitionError, ValidationError } from "@/foundation/errors";
 import { getAdapters, setAdapters } from "@/foundation/integrations";
-import { ana, db, elena, grace, makeFlag, marcus, maya, priya, resetDb, sofia, tom } from "./helpers";
+import { ana, db, diana, elena, grace, makeFlag, maya, nina, resetDb, sam, sofia } from "./helpers";
 
 // Not applicable from the playbook's list: row scope (every role with access sees every flag)
 // and masking/encryption (FeatureFlag has no sensitive fields).
@@ -29,19 +29,19 @@ const prodRequest = { enabled: "on", rolloutPercent: 25, reason: "Ramp to 25%" }
 describe("dev and staging", () => {
   it("engineer toggles staging directly: one audit entry with before/after", async () => {
     const f = await makeFlag();
-    const updated = await setEnvironment(priya, f.id, "staging", true);
-    expect(updated).toMatchObject({ stagingEnabled: true, prodEnabled: false, lastChangedById: priya.id });
+    const updated = await setEnvironment(nina, f.id, "staging", true);
+    expect(updated).toMatchObject({ stagingEnabled: true, prodEnabled: false, lastChangedById: nina.id });
     const rows = await audit(f.id);
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ action: "toggle_staging", actorId: priya.id, actorRole: "engineer", app: "feature-flags" });
+    expect(rows[0]).toMatchObject({ action: "toggle_staging", actorId: nina.id, actorRole: "engineer", app: "feature-flags" });
     expect(rows[0].before).toMatchObject({ stagingEnabled: false });
     expect(rows[0].after).toMatchObject({ stagingEnabled: true });
   });
 
   it("dev toggles apply immediately too; no-op toggles are rejected and not audited", async () => {
     const f = await makeFlag({ devEnabled: true });
-    await expect(setEnvironment(tom, f.id, "dev", true)).rejects.toBeInstanceOf(ValidationError);
-    await setEnvironment(tom, f.id, "dev", false);
+    await expect(setEnvironment(sam, f.id, "dev", true)).rejects.toBeInstanceOf(ValidationError);
+    await setEnvironment(sam, f.id, "dev", false);
     const rows = await audit(f.id);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ action: "toggle_dev", before: { devEnabled: true }, after: { devEnabled: false } });
@@ -60,7 +60,7 @@ describe("dev and staging", () => {
 describe("prod changes", () => {
   it("nobody can change prod directly (server-side), admins included", async () => {
     const f = await makeFlag();
-    for (const u of [priya, grace]) {
+    for (const u of [nina, grace]) {
       await expect(setEnvironment(u, f.id, "prod", true)).rejects.toBeInstanceOf(ForbiddenError);
     }
     expect(await db.featureFlag.findUniqueOrThrow({ where: { id: f.id } })).toMatchObject({ prodEnabled: false, prodRolloutPercent: 0 });
@@ -69,11 +69,11 @@ describe("prod changes", () => {
 
   it("a request does not change prod; it applies only after approval by a different user", async () => {
     const f = await makeFlag();
-    const req = await requestProdChange(priya, f.id, prodRequest);
-    expect(req).toMatchObject({ prodChangeStatus: "pending", prodChangeRequestedById: priya.id, pendingProdEnabled: true, pendingProdRolloutPercent: 25, prodEnabled: false, prodRolloutPercent: 0 });
+    const req = await requestProdChange(nina, f.id, prodRequest);
+    expect(req).toMatchObject({ prodChangeStatus: "pending", prodChangeRequestedById: nina.id, pendingProdEnabled: true, pendingProdRolloutPercent: 25, prodEnabled: false, prodRolloutPercent: 0 });
     expect(applyChange).not.toHaveBeenCalled();
 
-    await expect(approveProdChange(priya, f.id)).rejects.toBeInstanceOf(ForbiddenError); // engineers can't approve at all
+    await expect(approveProdChange(nina, f.id)).rejects.toBeInstanceOf(ForbiddenError); // engineers can't approve at all
     expect((await db.featureFlag.findUniqueOrThrow({ where: { id: f.id } })).prodEnabled).toBe(false);
 
     const approved = await approveProdChange(elena, f.id);
@@ -87,17 +87,17 @@ describe("prod changes", () => {
     await expect(rejectProdChange(grace, f.id)).rejects.toBeInstanceOf(MakerCheckerError);
     expect(applyChange).not.toHaveBeenCalled();
     expect(await db.featureFlag.findUniqueOrThrow({ where: { id: f.id } })).toMatchObject({ prodEnabled: false, prodChangeStatus: "pending" });
-    await approveProdChange(marcus, f.id);
+    await approveProdChange(diana, f.id);
     expect((await db.featureFlag.findUniqueOrThrow({ where: { id: f.id } })).prodEnabled).toBe(true);
   });
 
   it("FlagServiceAdapter is called on approval with the requested values, and Slack is notified", async () => {
     const f = await makeFlag({ key: "instant_payouts" });
-    await requestProdChange(tom, f.id, { enabled: "on", rolloutPercent: 10, reason: "Start small" });
-    await approveProdChange(marcus, f.id);
+    await requestProdChange(sam, f.id, { enabled: "on", rolloutPercent: 10, reason: "Start small" });
+    await approveProdChange(diana, f.id);
     expect(applyChange).toHaveBeenCalledTimes(1);
     expect(applyChange).toHaveBeenCalledWith({
-      key: "instant_payouts", environment: "prod", enabled: true, rolloutPercent: 10, requestedBy: tom.name, approvedBy: marcus.name,
+      key: "instant_payouts", environment: "prod", enabled: true, rolloutPercent: 10, requestedBy: sam.name, approvedBy: diana.name,
     });
     const notes = await db.notification.findMany({ where: { entityId: f.id } });
     expect(notes).toHaveLength(1);
@@ -107,7 +107,7 @@ describe("prod changes", () => {
 
   it("if the flag service push fails, nothing is applied and the request stays pending", async () => {
     const f = await makeFlag();
-    await requestProdChange(priya, f.id, prodRequest);
+    await requestProdChange(nina, f.id, prodRequest);
     applyChange.mockRejectedValueOnce(new Error("flag service down"));
     await expect(approveProdChange(elena, f.id)).rejects.toThrow("flag service down");
     expect(await db.featureFlag.findUniqueOrThrow({ where: { id: f.id } })).toMatchObject({ prodEnabled: false, prodChangeStatus: "pending" });
@@ -116,29 +116,29 @@ describe("prod changes", () => {
 
   it("reject leaves prod untouched, does not call the flag service, and allows a new request", async () => {
     const f = await makeFlag();
-    await requestProdChange(priya, f.id, prodRequest);
+    await requestProdChange(nina, f.id, prodRequest);
     const rejected = await rejectProdChange(elena, f.id);
     expect(rejected).toMatchObject({ prodChangeStatus: "rejected", prodEnabled: false, pendingProdEnabled: null });
     expect(applyChange).not.toHaveBeenCalled();
-    await requestProdChange(tom, f.id, prodRequest);
-    expect((await getFlag(tom, f.id)).prodChangeStatus).toBe("pending");
+    await requestProdChange(sam, f.id, prodRequest);
+    expect((await getFlag(sam, f.id)).prodChangeStatus).toBe("pending");
   });
 
   it.each([[101], [-1], ["12.5"], ["abc"]])("rollout %s is rejected", async (rolloutPercent) => {
     const f = await makeFlag();
-    await expect(requestProdChange(priya, f.id, { ...prodRequest, rolloutPercent })).rejects.toBeInstanceOf(ValidationError);
+    await expect(requestProdChange(nina, f.id, { ...prodRequest, rolloutPercent })).rejects.toBeInstanceOf(ValidationError);
     expect((await db.featureFlag.findUniqueOrThrow({ where: { id: f.id } })).prodChangeStatus).toBe("none");
     expect(await audit(f.id)).toHaveLength(0);
   });
 
   it("rollout 0 and 100 are accepted; missing reason and no-op requests are rejected", async () => {
     const a = await makeFlag();
-    await requestProdChange(priya, a.id, { ...prodRequest, rolloutPercent: 100 });
+    await requestProdChange(nina, a.id, { ...prodRequest, rolloutPercent: 100 });
     const b = await makeFlag({ prodEnabled: true, prodRolloutPercent: 50 });
-    await requestProdChange(priya, b.id, { enabled: "on", rolloutPercent: 0, reason: "Pause" });
+    await requestProdChange(nina, b.id, { enabled: "on", rolloutPercent: 0, reason: "Pause" });
     const c = await makeFlag();
-    await expect(requestProdChange(priya, c.id, { ...prodRequest, reason: "" })).rejects.toThrow(/Reason is required/);
-    await expect(requestProdChange(priya, c.id, { enabled: "off", rolloutPercent: 0, reason: "x" })).rejects.toThrow(/nothing to change/);
+    await expect(requestProdChange(nina, c.id, { ...prodRequest, reason: "" })).rejects.toThrow(/Reason is required/);
+    await expect(requestProdChange(nina, c.id, { enabled: "off", rolloutPercent: 0, reason: "x" })).rejects.toThrow(/nothing to change/);
   });
 
   it("only engineers and admins can request; a second request while one is pending is refused", async () => {
@@ -146,8 +146,8 @@ describe("prod changes", () => {
     for (const u of [elena, maya, ana]) {
       await expect(requestProdChange(u, f.id, prodRequest)).rejects.toBeInstanceOf(ForbiddenError);
     }
-    await requestProdChange(priya, f.id, prodRequest);
-    await expect(requestProdChange(tom, f.id, { ...prodRequest, rolloutPercent: 50 })).rejects.toBeInstanceOf(TransitionError);
+    await requestProdChange(nina, f.id, prodRequest);
+    await expect(requestProdChange(sam, f.id, { ...prodRequest, rolloutPercent: 50 })).rejects.toBeInstanceOf(TransitionError);
     expect((await db.featureFlag.findUniqueOrThrow({ where: { id: f.id } })).pendingProdRolloutPercent).toBe(25);
   });
 
@@ -155,15 +155,15 @@ describe("prod changes", () => {
     const f = await makeFlag();
     await expect(approveProdChange(elena, f.id)).rejects.toBeInstanceOf(TransitionError);
     await expect(rejectProdChange(elena, f.id)).rejects.toBeInstanceOf(TransitionError);
-    await requestProdChange(priya, f.id, prodRequest);
+    await requestProdChange(nina, f.id, prodRequest);
     await approveProdChange(elena, f.id);
-    await expect(approveProdChange(marcus, f.id)).rejects.toBeInstanceOf(TransitionError);
+    await expect(approveProdChange(diana, f.id)).rejects.toBeInstanceOf(TransitionError);
     expect(applyChange).toHaveBeenCalledTimes(1);
   });
 
   it("auditors cannot approve or reject", async () => {
     const f = await makeFlag();
-    await requestProdChange(priya, f.id, prodRequest);
+    await requestProdChange(nina, f.id, prodRequest);
     await expect(approveProdChange(maya, f.id)).rejects.toBeInstanceOf(ForbiddenError);
     await expect(rejectProdChange(maya, f.id)).rejects.toBeInstanceOf(ForbiddenError);
     expect((await db.featureFlag.findUniqueOrThrow({ where: { id: f.id } })).prodChangeStatus).toBe("pending");
@@ -172,21 +172,21 @@ describe("prod changes", () => {
 
 describe("audit trail", () => {
   it("every change writes exactly one audit entry with correct before/after values", async () => {
-    const f = await createFlag(priya, { key: "audited_flag", description: "d", ownerTeam: "risk" });
-    await setEnvironment(priya, f.id, "dev", true);
-    await requestProdChange(tom, f.id, { enabled: "on", rolloutPercent: 30, reason: "go" });
+    const f = await createFlag(nina, { key: "audited_flag", description: "d", ownerTeam: "risk" });
+    await setEnvironment(nina, f.id, "dev", true);
+    await requestProdChange(sam, f.id, { enabled: "on", rolloutPercent: 30, reason: "go" });
     await approveProdChange(elena, f.id);
-    await requestProdChange(priya, f.id, { enabled: "off", rolloutPercent: 30, reason: "roll back" });
-    await rejectProdChange(marcus, f.id);
+    await requestProdChange(nina, f.id, { enabled: "off", rolloutPercent: 30, reason: "roll back" });
+    await rejectProdChange(diana, f.id);
 
     const rows = await audit(f.id);
     expect(rows.map((r) => [r.action, r.actorId])).toEqual([
-      ["create", priya.id],
-      ["toggle_dev", priya.id],
-      ["status_change:request", tom.id],
+      ["create", nina.id],
+      ["toggle_dev", nina.id],
+      ["status_change:request", sam.id],
       ["status_change:approve", elena.id],
-      ["status_change:request", priya.id],
-      ["status_change:reject", marcus.id],
+      ["status_change:request", nina.id],
+      ["status_change:reject", diana.id],
     ]);
     const [create, dev, request, approve, request2, reject] = rows;
     expect(create.before).toBeNull();
@@ -194,7 +194,7 @@ describe("audit trail", () => {
     expect(dev.before).toMatchObject({ devEnabled: false });
     expect(dev.after).toMatchObject({ devEnabled: true });
     expect(request.before).toMatchObject({ prodChangeStatus: "none", pendingProdEnabled: null, prodEnabled: false });
-    expect(request.after).toMatchObject({ prodChangeStatus: "pending", pendingProdEnabled: true, pendingProdRolloutPercent: 30, prodChangeRequestedById: tom.id, prodEnabled: false });
+    expect(request.after).toMatchObject({ prodChangeStatus: "pending", pendingProdEnabled: true, pendingProdRolloutPercent: 30, prodChangeRequestedById: sam.id, prodEnabled: false });
     expect(approve.before).toMatchObject({ prodEnabled: false, prodRolloutPercent: 0, prodChangeStatus: "pending" });
     expect(approve.after).toMatchObject({ prodEnabled: true, prodRolloutPercent: 30, prodChangeStatus: "approved", flagServiceChangeId: "fsc_test_1" });
     expect(request2.after).toMatchObject({ pendingProdEnabled: false, prodEnabled: true });
@@ -202,7 +202,7 @@ describe("audit trail", () => {
     expect(reject.after).toMatchObject({ prodChangeStatus: "rejected", prodEnabled: true, prodRolloutPercent: 30 });
 
     // The flag detail screen's history is the same audit trail, newest first, readable by every role with access.
-    for (const u of [priya, elena, maya]) expect((await getFlagHistory(u, f.id)).map((e) => e.action)[0]).toBe("status_change:reject");
+    for (const u of [nina, elena, maya]) expect((await getFlagHistory(u, f.id)).map((e) => e.action)[0]).toBe("status_change:reject");
   });
 });
 
@@ -219,11 +219,11 @@ describe("create", () => {
   });
 
   it("engineer create starts off everywhere and writes one audit entry with before=null", async () => {
-    const f = await createFlag(priya, input);
-    expect(f).toMatchObject({ ...input, devEnabled: false, stagingEnabled: false, prodEnabled: false, prodRolloutPercent: 0, prodChangeStatus: "none", lastChangedById: priya.id });
+    const f = await createFlag(nina, input);
+    expect(f).toMatchObject({ ...input, devEnabled: false, stagingEnabled: false, prodEnabled: false, prodRolloutPercent: 0, prodChangeStatus: "none", lastChangedById: nina.id });
     const rows = await audit(f.id);
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ action: "create", actorId: priya.id, before: null });
+    expect(rows[0]).toMatchObject({ action: "create", actorId: nina.id, before: null });
   });
 
   it("admins can create", async () => {
@@ -234,15 +234,15 @@ describe("create", () => {
   it.each([
     ["New_Checkout"], ["new-checkout"], ["new checkout"], ["1st_flag"], ["_leading"], ["trailing_"], ["double__underscore"], ["a".repeat(65)],
   ])("rejects badly formatted key %s", async (key) => {
-    await expect(createFlag(priya, { ...input, key })).rejects.toBeInstanceOf(ValidationError);
+    await expect(createFlag(nina, { ...input, key })).rejects.toBeInstanceOf(ValidationError);
     expect(await db.featureFlag.count()).toBe(0);
     expect(await db.auditLog.count()).toBe(0);
   });
 
   it("rejects duplicate keys", async () => {
-    await createFlag(priya, input);
-    await expect(createFlag(tom, { ...input, description: "again" })).rejects.toThrow(/already exists/);
-    await expect(createFlag(tom, input)).rejects.toBeInstanceOf(ValidationError);
+    await createFlag(nina, input);
+    await expect(createFlag(sam, { ...input, description: "again" })).rejects.toThrow(/already exists/);
+    await expect(createFlag(sam, input)).rejects.toBeInstanceOf(ValidationError);
     expect(await db.featureFlag.count()).toBe(1);
     expect(await db.auditLog.count()).toBe(1);
   });
@@ -252,12 +252,12 @@ describe("create", () => {
     [{ ...input, ownerTeam: "marketing" }, /Owner team has an invalid value/],
     [{ ...input, key: undefined }, /Key is required/],
   ])("rejects invalid input %#", async (bad, msg) => {
-    await expect(createFlag(priya, bad)).rejects.toThrow(msg);
+    await expect(createFlag(nina, bad)).rejects.toThrow(msg);
     expect(await db.featureFlag.count()).toBe(0);
   });
 
   it("ignores prod state, status and requester in the input", async () => {
-    const f = await createFlag(priya, { ...input, prodEnabled: true, prodRolloutPercent: 100, prodChangeStatus: "approved", prodChangeRequestedById: priya.id });
+    const f = await createFlag(nina, { ...input, prodEnabled: true, prodRolloutPercent: 100, prodChangeStatus: "approved", prodChangeRequestedById: nina.id });
     expect(f).toMatchObject({ prodEnabled: false, prodRolloutPercent: 0, prodChangeStatus: "none", prodChangeRequestedById: null });
   });
 });
@@ -265,8 +265,8 @@ describe("create", () => {
 describe("read access", () => {
   it("every Feature-flag role lists all flags; KYC-only roles get nothing", async () => {
     await makeFlag();
-    const p = await makeFlag({ prodChangeStatus: "pending", prodChangeRequestedById: priya.id, pendingProdEnabled: true, pendingProdRolloutPercent: 5 });
-    for (const u of [priya, elena, grace, maya]) {
+    const p = await makeFlag({ prodChangeStatus: "pending", prodChangeRequestedById: nina.id, pendingProdEnabled: true, pendingProdRolloutPercent: 5 });
+    for (const u of [nina, elena, grace, maya]) {
       expect(await listFlags(u)).toHaveLength(2);
       expect((await listPendingProdChanges(u)).map((f) => f.id)).toEqual([p.id]);
     }
