@@ -6,12 +6,18 @@ if (!existsSync(".env")) {
   console.log("Created .env from .env.example");
 }
 
-// Generate a local field-encryption key if one isn't set. Production would use a KMS-managed key.
-const env = readFileSync(".env", "utf8");
-const current = env.match(/^FIELD_ENCRYPTION_KEY="?([^"\n]*)"?$/m);
-if (!current || !current[1]) {
-  const line = `FIELD_ENCRYPTION_KEY="${randomBytes(32).toString("base64")}"`;
-  const next = current ? env.replace(current[0], line) : `${env.trimEnd()}\n\n${line}\n`;
-  writeFileSync(".env", next);
-  console.log("Generated FIELD_ENCRYPTION_KEY in .env");
+// Generate local secrets that aren't set. Production would load these from a KMS / secrets manager.
+const GENERATED = {
+  FIELD_ENCRYPTION_KEY: () => randomBytes(32).toString("base64"),
+  ONBOARDING_SERVICE_TOKEN: () => randomBytes(32).toString("hex"),
+};
+
+let env = readFileSync(".env", "utf8");
+for (const [name, make] of Object.entries(GENERATED)) {
+  const current = env.match(new RegExp(`^${name}="?([^"\\n]*)"?$`, "m"));
+  if (current && current[1]) continue;
+  const line = `${name}="${make()}"`;
+  env = current ? env.replace(current[0], line) : `${env.trimEnd()}\n\n${line}\n`;
+  console.log(`Generated ${name} in .env`);
 }
+writeFileSync(".env", env);

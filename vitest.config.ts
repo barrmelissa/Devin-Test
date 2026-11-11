@@ -7,7 +7,7 @@ export default defineConfig({
     environment: "node",
     globalSetup: ["./tests/global-setup.ts"],
     // Fixed, test-only key (not a secret).
-    env: { DATABASE_URL: "file:./test.db", FIELD_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64") },
+    env: { DATABASE_URL: "file:./test.db", FIELD_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"), ONBOARDING_SERVICE_TOKEN: "test-onboarding-token" },
     fileParallelism: false,
   },
 });

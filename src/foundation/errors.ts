@@ -6,6 +6,14 @@ export class ForbiddenError extends Error {
   }
 }
 
+export class UnauthorizedError extends Error {
+  readonly status = 401;
+  constructor(message = "Authentication required.") {
+    super(message);
+    this.name = "UnauthorizedError";
+  }
+}
+
 export class MakerCheckerError extends ForbiddenError {
   constructor(message = "Maker-checker: you cannot approve something you submitted.") {
     super(message);

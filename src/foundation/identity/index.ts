@@ -17,7 +17,12 @@ function toPrincipal(u: { id: string; name: string; role: string }): Principal {
 
 export async function getCurrentUser(): Promise<Principal> {
   const store = await cookies();
-  const id = store.get(USER_COOKIE)?.value ?? DEFAULT_USER_ID;
+  return userForSession(store.get(USER_COOKIE)?.value);
+}
+
+/** Resolves the session cookie value to a user (stub: the cookie is the user id). */
+export async function userForSession(cookieValue: string | undefined): Promise<Principal> {
+  const id = cookieValue ?? DEFAULT_USER_ID;
   const user = (await db.user.findUnique({ where: { id } })) ?? (await db.user.findFirst({ orderBy: { name: "asc" } }));
   if (!user) throw new Error("No users found. Run `npm run setup`.");
   return toPrincipal(user);

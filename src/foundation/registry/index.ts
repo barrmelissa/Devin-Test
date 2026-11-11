@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { ApiRoute } from "../api";
 import type { Principal } from "../identity/types";
 
 export type AppScreenProps = {
@@ -16,6 +17,8 @@ export type AppManifest = {
   /** Whether the app shows in the nav for this user. Server-side checks still happen in the data helpers. */
   canAccess: (user: Principal) => boolean;
   render: (props: AppScreenProps) => Promise<ReactNode> | ReactNode;
+  /** HTTP endpoints served at /api/<id>/<key> (see @/foundation/api). */
+  api?: Record<string, ApiRoute>;
 };
 
 export function defineApp(manifest: AppManifest): AppManifest {
@@ -24,4 +27,8 @@ export function defineApp(manifest: AppManifest): AppManifest {
 
 export function appHref(appId: string, ...segments: string[]) {
   return ["/apps", appId, ...segments].join("/");
+}
+
+export function apiHref(appId: string, route: string) {
+  return `/api/${appId}/${route}`;
 }
