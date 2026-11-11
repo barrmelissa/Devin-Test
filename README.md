@@ -41,6 +41,26 @@ Demo tip: open "Chen Wei" as Sofia. She submitted it, so Approve is disabled. Sw
   ```
   Admins can click **Simulate new signup** on the queue to send randomized data through the same endpoint with their session.
 
+### Refunds dashboard
+
+![Refunds dashboard](docs/screenshots/refunds-dashboard.png)
+
+`/apps/refunds`: summary tiles (pending approval, processed in the last 7 days, failed) above a table filterable by status and reason, a detail page with role- and status-dependent actions plus audit history, and a **New refund request** form built on the shared create pattern.
+
+- Statuses: `submitted → approved → processed | failed`, or `submitted → rejected`.
+- Refunds at or under $500 (`AUTO_APPROVE_LIMIT_CENTS` in `src/apps/refunds/config.ts`) are auto-approved on submit; larger ones wait for finance. The requester can't approve their own refund (maker-checker, admins included).
+- **Process refund** calls the mock `PaymentsAdapter` and records the provider result. Demo: transaction IDs containing `FAIL` are declined. Approvals and failures post a mock Slack message to `#refunds-ops` (printed in the dev console).
+- Refund amount must be greater than 0 and cannot exceed the original charge (validated server-side).
+
+| Role | Users | What they see in Refunds |
+|---|---|---|
+| support_agent | Priya, Marcus | All refunds; create refund requests; add notes; cannot approve or process |
+| finance_approver | Fatima, Tom | All refunds; approve/reject submitted refunds (not their own); process approved refunds; add notes |
+| admin | Grace, Hiro | Everything (still bound by maker-checker) |
+| auditor | Maya, Leo | Read-only, plus the audit log |
+
+Analysts and senior reviewers have no Refunds access, and the new roles have no KYC access. Demo tip: as Grace, open "Contoso Fitness" (she requested it, so Approve is disabled); switch to Fatima to approve, then **Process refund**. Open "Diego Alvarez" as Fatima and process it to see a failure.
+
 ## Architecture
 
 ```
@@ -90,7 +110,7 @@ Key pieces:
 | App | Path | Status |
 |---|---|---|
 | KYC review queue | `/apps/kyc` | Built |
-| Refunds dashboard | `/apps/refunds` | Next session (uses `PaymentsAdapter`) |
+| Refunds dashboard | `/apps/refunds` | Built (uses `PaymentsAdapter`, `NotificationsAdapter`) |
 | Feature-flag admin | `/apps/flags` | Next session |
 
 ## Adding an app
@@ -99,4 +119,4 @@ Follow [`docs/playbooks/new-internal-app.md`](docs/playbooks/new-internal-app.md
 
 ## Out of scope
 
-Real SSO, deployment/hosting, mobile, real external APIs (all adapters are mocks), the refunds and feature-flag apps, pagination, and visual polish beyond clean and consistent. SQLite is used locally; the schema avoids SQLite-only features (no enums, JSON stored as text) so it can move to Postgres by changing the datasource provider and regenerating migrations.
+Real SSO, deployment/hosting, mobile, real external APIs (all adapters are mocks), the feature-flag app, pagination, and visual polish beyond clean and consistent. SQLite is used locally; the schema avoids SQLite-only features (no enums, JSON stored as text) so it can move to Postgres by changing the datasource provider and regenerating migrations.

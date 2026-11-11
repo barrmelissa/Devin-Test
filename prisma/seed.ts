@@ -13,6 +13,10 @@ const users = [
   { id: "u_hiro", name: "Hiro (admin)", email: "hiro@example.com", role: "admin" },
   { id: "u_maya", name: "Maya (auditor)", email: "maya@example.com", role: "auditor" },
   { id: "u_leo", name: "Leo (auditor)", email: "leo@example.com", role: "auditor" },
+  { id: "u_priya", name: "Priya (support)", email: "priya@example.com", role: "support_agent" },
+  { id: "u_marcus", name: "Marcus (support)", email: "marcus@example.com", role: "support_agent" },
+  { id: "u_fatima", name: "Fatima (finance)", email: "fatima@example.com", role: "finance_approver" },
+  { id: "u_tom", name: "Tom (finance)", email: "tom@example.com", role: "finance_approver" },
 ];
 
 type Seed = {
@@ -63,10 +67,42 @@ const cases: Seed[] = [
   { customerName: "Blue Horizon Ventures", country: "KY", riskScore: 84, taxId: "KY-CR-339201", status: "escalated", assignedAnalystId: "u_ana", notes: "[Ana (analyst)] Shell company indicators." },
 ];
 
+// ---- Refunds ----
+// [customer, transactionId, original $, refund $, reason, status, requestedBy, approvedBy ("auto" = auto-approved), created days ago, processed days ago]
+type RefundSeed = [string, string, number, number, string, string, string, string | null, number, number?];
+const refunds: RefundSeed[] = [
+  // submitted (over $500, waiting for finance)
+  ["Northwind Traders", "txn_3QK8f2LmA91x", 1840, 1840, "duplicate_charge", "submitted", "u_priya", null, 0.2],
+  ["Helen Park", "txn_3QK7z0PqB55c", 1299, 750, "service_issue", "submitted", "u_marcus", null, 0.5],
+  ["Contoso Fitness", "txn_3QJy71VtC08d", 4200, 2600, "fraud", "submitted", "u_grace", null, 1],
+  ["Ravi Shah", "txn_3QJw94HsD33e", 980, 980, "fraud", "submitted", "u_hiro", null, 1.5],
+  // approved (ready to process)
+  ["Lena Fischer", "txn_3QJu22KdE71f", 89, 89, "duplicate_charge", "approved", "u_priya", "auto", 0.3],
+  ["Bluebird Bakery", "txn_3QJs10WrF46g", 640, 320, "service_issue", "approved", "u_marcus", "auto", 0.7],
+  ["Omega Analytics Ltd", "txn_3QJq55NbG19h", 2500, 1200, "other", "approved", "u_priya", "u_fatima", 2],
+  ["Diego Alvarez", "txn_FAIL_3QJo83Yc", 450, 450, "duplicate_charge", "approved", "u_marcus", "auto", 0.1],
+  // processed
+  ["Fourth Coffee", "txn_3QJm61JaH02i", 59.99, 59.99, "duplicate_charge", "processed", "u_priya", "auto", 3, 2.9],
+  ["Grace Liu", "txn_3QJk40TpJ88j", 1500, 900, "service_issue", "processed", "u_marcus", "u_tom", 4, 3],
+  ["Tailspin Toys", "txn_3QJi27QwK63k", 210, 210, "fraud", "processed", "u_priya", "auto", 2, 1.8],
+  ["Samuel Osei", "txn_3QJg09ZeL37m", 3200, 3200, "fraud", "processed", "u_hiro", "u_fatima", 5, 4],
+  ["Wingtip Supplies", "txn_3QJe86XrM14n", 120, 45.5, "other", "processed", "u_marcus", "auto", 12, 11],
+  ["Nadia Haddad", "txn_3QJc72CvN90p", 760, 760, "duplicate_charge", "processed", "u_priya", "u_tom", 15, 13],
+  // failed
+  ["Adventure Works", "txn_3QJa38BuP56q", 699, 699, "service_issue", "failed", "u_marcus", "u_fatima", 3, 2],
+  ["Yuki Tanaka", "txn_3QHz15MnQ21r", 35, 35, "duplicate_charge", "failed", "u_priya", "auto", 6, 5.5],
+  // rejected
+  ["Litware Inc.", "txn_3QHx91LkR08s", 5000, 5000, "other", "rejected", "u_priya", null, 7],
+  ["Carlos Mendes", "txn_3QHv64JhS73t", 820, 820, "fraud", "rejected", "u_marcus", null, 8],
+  ["Proseware Studio", "txn_3QHt30GfT49u", 1100, 600, "service_issue", "rejected", "u_grace", null, 9],
+  ["Emma Novak", "txn_3QHr07DdU15v", 2300, 1150, "service_issue", "submitted", "u_marcus", null, 0.05],
+];
+
 async function main() {
   await prisma.notification.deleteMany();
   await prisma.auditLog.deleteMany();
   await prisma.kycCase.deleteMany();
+  await prisma.refundRequest.deleteMany();
   await prisma.user.deleteMany();
 
   for (const u of users) await prisma.user.create({ data: u });
@@ -93,7 +129,35 @@ async function main() {
     });
   }
 
-  console.log(`Seeded ${users.length} users and ${cases.length} KYC cases.`);
+  const day = 24 * 60 * 60 * 1000;
+  for (const [customerName, transactionId, original, refund, reason, status, requestedById, approver, ago, processedAgo] of refunds) {
+    const createdAt = new Date(now - ago * day);
+    const processedAt = processedAgo != null ? new Date(now - processedAgo * day) : null;
+    const failed = status === "failed";
+    const created = await prisma.refundRequest.create({
+      data: {
+        customerName, transactionId, reason, status, requestedById, createdAt,
+        originalAmountCents: Math.round(original * 100),
+        refundAmountCents: Math.round(refund * 100),
+        autoApproved: approver === "auto",
+        approvedById: approver && approver !== "auto" ? approver : null,
+        processedAt,
+        providerStatus: processedAt ? (failed ? "failed" : "succeeded") : null,
+        providerRefundId: processedAt && !failed ? `re_mock_${transactionId.slice(-8)}` : null,
+        providerMessage: processedAt ? (failed ? "Card account closed (mock)" : "Refund issued") : null,
+        notes: status === "rejected" ? "[Fatima (finance)] Outside refund policy; customer offered account credit instead." : "",
+      },
+    });
+    await prisma.auditLog.create({
+      data: {
+        actorId: "system", actorName: "Seed script", actorRole: "system", app: "refunds",
+        entityType: "RefundRequest", entityId: created.id, action: "create", before: null,
+        after: JSON.stringify(created), createdAt,
+      },
+    });
+  }
+
+  console.log(`Seeded ${users.length} users, ${cases.length} KYC cases and ${refunds.length} refunds.`);
 }
 
 main()
