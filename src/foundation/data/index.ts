@@ -117,8 +117,9 @@ export async function createRecord<T>(
   if (wf && payload[wf.statusField] !== wf.initial) {
     throw new TransitionError(`New ${entity.type} records must start in "${wf.initial}".`);
   }
-  if (wf && payload[wf.submitterField] != null) {
-    throw new TransitionError("The submitter is recorded by transitionRecord(), not on create.");
+  // Creating can count as submitting (e.g. a refund request), but only as yourself.
+  if (wf && payload[wf.submitterField] != null && payload[wf.submitterField] !== user.id) {
+    throw new TransitionError("The submitter can only be the user creating the record (or set later by transitionRecord()).");
   }
   const created = await db.$transaction(async (tx) => {
     const row = fromStorage(entity, await delegate(tx, asDef(entity)).create({ data: toStorage(entity, payload) }));
@@ -231,4 +232,4 @@ export async function transitionRecord<T>(
 }
 
 export { defineEntity, type EntityDef } from "./entities";
-export type { KycCase, User } from "./models";
+export type { KycCase, RefundRequest, User } from "./models";
