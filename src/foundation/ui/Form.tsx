@@ -10,10 +10,13 @@ export function Form({
   fields,
   submitLabel = "Save",
   hidden = {},
+  values = {},
   variant = "primary",
 }: {
-  action: (formData: FormData) => Promise<void>;
+  action: (formData: FormData) => void | Promise<void>;
   fields: FormFieldDef[];
+  /** Initial values by field name (e.g. what the user submitted before a validation error). */
+  values?: Record<string, string>;
   submitLabel?: string;
   hidden?: Record<string, string>;
   variant?: "primary" | "danger" | "default";
@@ -25,9 +28,9 @@ export function Form({
         <label key={f.name} className="block text-sm">
           <span className="text-slate-700">{f.label}{f.required && <span className="text-rose-600"> *</span>}</span>
           {f.type === "textarea" ? (
-            <textarea name={f.name} required={f.required} placeholder={f.placeholder} defaultValue={f.defaultValue} maxLength={f.maxLength} rows={3} className={inputClass} />
+            <textarea name={f.name} required={f.required} placeholder={f.placeholder} defaultValue={values[f.name] ?? f.defaultValue} maxLength={f.maxLength} rows={3} className={inputClass} />
           ) : f.type === "select" ? (
-            <select name={f.name} required={f.required} defaultValue={f.defaultValue ?? ""} className={inputClass}>
+            <select name={f.name} required={f.required} defaultValue={values[f.name] ?? f.defaultValue ?? ""} className={inputClass}>
               <option value="" disabled={f.required}>{f.required ? "Select…" : "None"}</option>
               {f.options?.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
@@ -37,7 +40,7 @@ export function Form({
               type={f.type ?? "text"}
               required={f.required}
               placeholder={f.placeholder}
-              defaultValue={f.defaultValue}
+              defaultValue={values[f.name] ?? f.defaultValue}
               min={f.min}
               max={f.max}
               step={f.type === "number" ? (f.decimal ? "any" : 1) : undefined}
