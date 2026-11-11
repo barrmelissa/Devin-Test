@@ -1,8 +1,11 @@
 import type { Principal } from "@/foundation/identity/types";
+import { listUsers } from "@/foundation/identity";
 import { getAdapters } from "@/foundation/integrations";
-import { getRecord, getRecordHistory, listRecords, transitionRecord, updateRecord, type KycCase, type User } from "@/foundation/data";
+import { createFromInput, getRecord, getRecordHistory, listRecords, transitionRecord, updateRecord, type KycCase, type User } from "@/foundation/data";
+import type { ParsedInput } from "@/foundation/forms";
 import { ValidationError } from "@/foundation/errors";
 import { APP_ID, KycCaseEntity } from "./entity";
+import { INTAKE_FIELDS, newCaseFields } from "./fields";
 
 // KYC business logic. Everything goes through foundation helpers, so access control,
 // masking and audit logging are applied automatically.
@@ -42,6 +45,46 @@ export function getCaseHistory(user: Principal, id: string) {
   return getRecordHistory(user, KycCaseEntity, id);
 }
 
+const stamp = () => new Date().toISOString().slice(0, 16).replace("T", " ");
+const noteLine = (user: Principal, text: string) => `[${user.name}, ${stamp()}] ${text}`;
+
+function caseFromInput(v: ParsedInput) {
+  return { customerName: String(v.customerName), country: String(v.country), taxId: String(v.taxId), riskScore: Number(v.riskScore) };
+}
+
+export async function getNewCaseFields() {
+  return newCaseFields(await listUsers({ role: "analyst" }));
+}
+
+/** Manual "New case" form (admin, senior reviewer). */
+export async function createCase(user: Principal, input: Record<string, unknown>) {
+  return createFromInput(user, KycCaseEntity, await getNewCaseFields(), input, {
+    build: (v) => ({
+      ...caseFromInput(v),
+      assignedAnalystId: v.assignedAnalystId ? String(v.assignedAnalystId) : null,
+      notes: v.notes ? noteLine(user, String(v.notes)) : "",
+    }),
+  });
+}
+
+/** Automated intake from the onboarding system: creates a "new" case with the vendor check already run. */
+export async function intakeSignup(user: Principal, input: Record<string, unknown>) {
+  return createFromInput(user, KycCaseEntity, INTAKE_FIELDS, input, {
+    action: "intake",
+    build: async (v) => {
+      const c = caseFromInput(v);
+      const check = await getAdapters().kycVendor.runCheck(c);
+      return {
+        ...c,
+        vendorResult: check.result,
+        vendorReason: check.reason,
+        vendorCheckedAt: check.checkedAt,
+        notes: noteLine(user, "Received from onboarding; vendor check ran automatically."),
+      };
+    },
+  });
+}
+
 export async function runVendorCheck(user: Principal, id: string) {
   // The vendor needs the real tax ID, so it is called from the patch callback, which receives
   // the unmasked record only after the foundation has checked the caller may update this case.
@@ -63,11 +106,10 @@ export async function runVendorCheck(user: Principal, id: string) {
 export async function addNote(user: Principal, id: string, text: string) {
   const note = text.trim();
   if (!note) throw new ValidationError("Note cannot be empty.");
-  const stamp = new Date().toISOString().slice(0, 16).replace("T", " ");
   return updateRecord(user, KycCaseEntity, id, {}, {
     action: "add_note",
     requireStatus: ["new", "in_review", "pending_approval", "escalated"],
-    patch: (current) => ({ notes: `${current.notes ? `${current.notes}\n` : ""}[${user.name}, ${stamp}] ${note}` }),
+    patch: (current) => ({ notes: `${current.notes ? `${current.notes}\n` : ""}${noteLine(user, note)}` }),
   });
 }
 

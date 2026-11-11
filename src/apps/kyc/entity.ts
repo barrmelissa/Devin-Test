@@ -29,9 +29,11 @@ const assignedToMe = {
 export const kycPolicy = definePolicy<KycCase>({
   roles: {
     analyst: { actions: ["read", "update", "transition"], scope: assignedToMe },
-    senior_reviewer: { actions: ["read", "update", "transition"], unmaskedFields: ["taxId"] },
+    senior_reviewer: { actions: ["read", "create", "update", "transition"], unmaskedFields: ["taxId"] },
     admin: { actions: ["read", "create", "update", "transition"], unmaskedFields: ["taxId"] },
     auditor: { actions: ["read"] },
+    // Onboarding system service account (POST /api/kyc/intake): create only, tax ID masked in responses.
+    integration: { actions: ["create"] },
   },
   sensitiveFields: { taxId: maskLast4 },
 });

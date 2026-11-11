@@ -1,7 +1,9 @@
 import { can, canSeeField } from "@/foundation/access";
 import type { AppScreenProps } from "@/foundation/registry";
-import { appHref } from "@/foundation/registry";
-import { Banner, DataTable, FilterBar, PageHeader, StatusBadge, humanize } from "@/foundation/ui";
+import Link from "next/link";
+import { apiHref, appHref } from "@/foundation/registry";
+import { ApiButton, Banner, DataTable, FilterBar, PageHeader, StatusBadge, buttonClass, humanize } from "@/foundation/ui";
+import { randomSignup } from "../demo";
 import { APP_ID, KYC_STATUSES, KycCaseEntity, kycPolicy } from "../entity";
 import { RISK_BANDS, listCases, riskBand, type KycCaseWithAnalyst } from "../service";
 import { RiskScore } from "./RiskScore";
@@ -14,7 +16,12 @@ export async function Queue({ user, searchParams }: Omit<AppScreenProps, "path">
       <PageHeader
         title="KYC review queue"
         subtitle={scoped ? "Showing cases assigned to you." : `Showing all cases${can(user, "transition", { entity: KycCaseEntity }) ? "" : " (read-only)"}.`}
-      />
+      >
+        <div className="flex items-start gap-2">
+          {can(user, "integrations:simulate") && <ApiButton endpoint={apiHref(APP_ID, "intake")} body={randomSignup()} label="Simulate new signup" />}
+          {can(user, "create", { entity: KycCaseEntity }) && <Link href={appHref(APP_ID, "new")} className={buttonClass("primary")}>New case</Link>}
+        </div>
+      </PageHeader>
       <Banner searchParams={searchParams} />
       <FilterBar
         values={searchParams}

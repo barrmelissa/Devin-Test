@@ -1,13 +1,21 @@
 "use server";
 
-import { formString, runAction } from "@/foundation/actions";
+import { formObject, formString, runAction } from "@/foundation/actions";
 import { getCurrentUser } from "@/foundation/identity";
 import { appHref } from "@/foundation/registry";
 import { humanize } from "@/foundation/ui/StatusBadge";
 import { APP_ID } from "./entity";
-import { addNote, runVendorCheck, transitionCase } from "./service";
+import { addNote, createCase, runVendorCheck, transitionCase } from "./service";
 
 const caseHref = (id: string) => appHref(APP_ID, id);
+
+export async function createCaseAction(formData: FormData) {
+  const user = await getCurrentUser();
+  return runAction(appHref(APP_ID, "new"), async () => {
+    const c = await createCase(user, formObject(formData));
+    return { message: `Case created for ${c.customerName}.`, redirectTo: caseHref(c.id) };
+  });
+}
 
 export async function runVendorCheckAction(formData: FormData) {
   const id = formString(formData, "id");
