@@ -19,6 +19,7 @@ export default [
             { group: ["@/foundation/db", "@/foundation/db/*", "**/foundation/db"], message: "The db client is foundation-internal. Use @/foundation/data." },
             { group: ["@/foundation/audit/writer", "@/foundation/audit/query", "**/audit/writer", "**/audit/query"], message: "Audit entries are written by the foundation data helpers automatically; read history via getRecordHistory()." },
             { group: ["@/foundation/integrations/mocks/*"], message: "Use getAdapters() from @/foundation/integrations." },
+            { group: ["@/foundation/crypto", "**/foundation/crypto"], message: "Field encryption is handled by the foundation data helpers; list the field in policy.sensitiveFields." },
           ],
         },
       ],

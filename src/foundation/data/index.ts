@@ -3,6 +3,7 @@ import { maskRecord } from "../access/masking";
 import { assertTransition } from "../approvals/workflow";
 import { historyFor } from "../audit/query";
 import { writeAuditEntry } from "../audit/writer";
+import { decryptField, encryptField } from "../crypto";
 import { db, type Tx } from "../db";
 import { NotFoundError, TransitionError } from "../errors";
 import type { Principal } from "../identity/types";
@@ -13,6 +14,8 @@ import type { EntityDef } from "./entities";
  *  1. checks access with can() (role + row scope),
  *  2. masks sensitive fields for the caller,
  *  3. for mutations, writes exactly one AuditLog entry in the same transaction.
+ * Sensitive fields (policy.sensitiveFields) are encrypted at rest and stored only in masked
+ * form in audit snapshots, so plaintext never lands in the database.
  */
 
 type Rec = Record<string, unknown> & { id: string };
@@ -31,6 +34,37 @@ function asDef<T>(entity: EntityDef<T>) {
   return entity as unknown as EntityDef<never>;
 }
 
+function sensitive<T>(entity: EntityDef<T>) {
+  return Object.entries(entity.policy.sensitiveFields ?? {}) as [string, (v: unknown) => string][];
+}
+
+/** Encrypt sensitive fields in a create/update payload. */
+function toStorage<T>(entity: EntityDef<T>, data: Record<string, unknown>): Record<string, unknown> {
+  const out = { ...data };
+  for (const [field] of sensitive(entity)) {
+    if (out[field] != null) out[field] = encryptField(String(out[field]));
+  }
+  return out;
+}
+
+/** Decrypt sensitive fields on a row read from the database. */
+function fromStorage<T>(entity: EntityDef<T>, row: Rec): Rec {
+  const out = { ...row };
+  for (const [field] of sensitive(entity)) {
+    if (typeof out[field] === "string") out[field] = decryptField(out[field] as string);
+  }
+  return out;
+}
+
+/** What the audit log stores: sensitive fields masked, never plaintext or ciphertext. */
+function auditSnapshot<T>(entity: EntityDef<T>, row: Rec): Rec {
+  const out = { ...row };
+  for (const [field, mask] of sensitive(entity)) {
+    if (out[field] != null) out[field] = mask(out[field]);
+  }
+  return out;
+}
+
 export type ListOptions = {
   where?: Record<string, unknown>;
   orderBy?: Record<string, "asc" | "desc"> | Record<string, "asc" | "desc">[];
@@ -42,13 +76,13 @@ export async function listRecords<T>(user: Principal, entity: EntityDef<T>, opts
   assertCan(user, "read", { entity });
   const where = { AND: [opts.where ?? {}, rowScopeWhere(user, entity)] };
   const rows = await delegate(db, asDef(entity)).findMany({ where, orderBy: opts.orderBy, include: opts.include, take: opts.take });
-  return rows.map((r) => maskRecord(user, entity.policy, r as unknown as T));
+  return rows.map((r) => maskRecord(user, entity.policy, fromStorage(entity, r) as unknown as T));
 }
 
 async function loadRaw<T>(client: Tx, entity: EntityDef<T>, id: string): Promise<Rec> {
   const row = await delegate(client, asDef(entity)).findUnique({ where: { id } });
   if (!row) throw new NotFoundError(`${entity.type} ${id} not found.`);
-  return row;
+  return fromStorage(entity, row);
 }
 
 export async function getRecord<T>(
@@ -57,8 +91,9 @@ export async function getRecord<T>(
   id: string,
   opts: { include?: Record<string, boolean> } = {},
 ): Promise<T> {
-  const row = await delegate(db, asDef(entity)).findUnique({ where: { id }, include: opts.include });
-  if (!row) throw new NotFoundError(`${entity.type} ${id} not found.`);
+  const stored = await delegate(db, asDef(entity)).findUnique({ where: { id }, include: opts.include });
+  if (!stored) throw new NotFoundError(`${entity.type} ${id} not found.`);
+  const row = fromStorage(entity, stored);
   assertCan(user, "read", { entity, record: row as unknown as T });
   return maskRecord(user, entity.policy, row as unknown as T);
 }
@@ -82,10 +117,10 @@ export async function createRecord<T>(
     throw new TransitionError(`New ${entity.type} records must start in "${wf.initial}".`);
   }
   const created = await db.$transaction(async (tx) => {
-    const row = await delegate(tx, asDef(entity)).create({ data: payload });
+    const row = fromStorage(entity, await delegate(tx, asDef(entity)).create({ data: toStorage(entity, payload) }));
     await writeAuditEntry(tx, {
       actor: user, app: entity.app, entityType: entity.type, entityId: row.id,
-      action: opts.action ?? "create", before: null, after: row,
+      action: opts.action ?? "create", before: null, after: auditSnapshot(entity, row),
     });
     return row;
   });
@@ -124,10 +159,10 @@ export async function updateRecord<T>(
       }
     }
     const patch = { ...data, ...(opts.patch ? await opts.patch(before as unknown as T) : {}) };
-    const after = await delegate(tx, asDef(entity)).update({ where: { id }, data: patch });
+    const after = fromStorage(entity, await delegate(tx, asDef(entity)).update({ where: { id }, data: toStorage(entity, patch) }));
     await writeAuditEntry(tx, {
       actor: user, app: entity.app, entityType: entity.type, entityId: id,
-      action: opts.action ?? "update", before, after,
+      action: opts.action ?? "update", before: auditSnapshot(entity, before), after: auditSnapshot(entity, after),
     });
     return after;
   });
@@ -153,10 +188,10 @@ export async function transitionRecord<T>(
     const t = assertTransition(user, wf, before, transition);
     const patch: Record<string, unknown> = { ...data, [wf.statusField]: t.to };
     if (t.submits) patch[wf.submitterField] = user.id;
-    const after = await delegate(tx, asDef(entity)).update({ where: { id }, data: patch });
+    const after = fromStorage(entity, await delegate(tx, asDef(entity)).update({ where: { id }, data: toStorage(entity, patch) }));
     await writeAuditEntry(tx, {
       actor: user, app: entity.app, entityType: entity.type, entityId: id,
-      action: `status_change:${transition}`, before, after,
+      action: `status_change:${transition}`, before: auditSnapshot(entity, before), after: auditSnapshot(entity, after),
     });
     return after;
   });

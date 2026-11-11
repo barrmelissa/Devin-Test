@@ -27,7 +27,7 @@ function toEntry(viewer: Principal, row: Row): AuditEntry {
   const parse = (s: string | null) => {
     if (!s) return null;
     const obj = JSON.parse(s) as Record<string, unknown>;
-    // Audit rows store the raw values; sensitive fields are masked for the viewer at read time.
+    // Sensitive fields are already masked before storage; masking again here is a safety net.
     return def ? maskRecord(viewer, def.policy as never, obj) : obj;
   };
   return { ...row, before: parse(row.before), after: parse(row.after) };

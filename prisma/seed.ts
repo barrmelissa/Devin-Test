@@ -1,4 +1,6 @@
 import { PrismaClient } from "@prisma/client";
+import { maskLast4 } from "../src/foundation/access/masking";
+import { encryptField } from "../src/foundation/crypto";
 
 const prisma = new PrismaClient();
 
@@ -73,7 +75,7 @@ async function main() {
   for (const [i, c] of cases.entries()) {
     const createdAt = new Date(now - (cases.length - i) * 6 * 60 * 60 * 1000);
     const created = await prisma.kycCase.create({
-      data: { ...c, notes: c.notes ?? "", createdAt, vendorCheckedAt: c.vendorResult ? createdAt : null },
+      data: { ...c, taxId: encryptField(c.taxId), notes: c.notes ?? "", createdAt, vendorCheckedAt: c.vendorResult ? createdAt : null },
     });
     await prisma.auditLog.create({
       data: {
@@ -85,7 +87,7 @@ async function main() {
         entityId: created.id,
         action: "create",
         before: null,
-        after: JSON.stringify(created),
+        after: JSON.stringify({ ...created, taxId: maskLast4(c.taxId) }),
         createdAt,
       },
     });

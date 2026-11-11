@@ -10,6 +10,7 @@ const FORBIDDEN = [
   /from\s+["'][^"']*foundation\/db["']/,
   /from\s+["'][^"']*foundation\/audit\/(writer|query)["']/,
   /from\s+["'][^"']*foundation\/integrations\/mocks\//,
+  /from\s+["'][^"']*foundation\/crypto["']/,
   /\bfetch\s*\(/,
 ];
 
