@@ -44,12 +44,13 @@ describe("field masking", () => {
     expect((await listCases(ana))[0].taxId).toBe(asAnalyst.taxId);
   });
 
-  it("tax ID is masked inside audit history for analysts", async () => {
+  it("tax ID is masked inside audit history for every role", async () => {
     const c = await makeCase({ taxId: "84-2917365" });
     await addNote(ana, c.id, "checked");
-    const [entry] = await getCaseHistory(ana, c.id);
-    expect(entry.before?.taxId).not.toBe("84-2917365");
-    const [seniorEntry] = await getCaseHistory(sofia, c.id);
-    expect(seniorEntry.before?.taxId).toBe("84-2917365");
+    for (const viewer of [ana, sofia]) {
+      const [entry] = await getCaseHistory(viewer, c.id);
+      expect(entry.before?.taxId).not.toContain("84-29");
+      expect(String(entry.before?.taxId).endsWith("7365")).toBe(true);
+    }
   });
 });

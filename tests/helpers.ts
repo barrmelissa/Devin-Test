@@ -1,5 +1,6 @@
 // Tests may use the db client directly for fixtures; app code may not.
 import type { Prisma } from "@prisma/client";
+import { encryptField } from "@/foundation/crypto";
 import { db } from "@/foundation/db";
 import type { Principal } from "@/foundation/identity/types";
 
@@ -20,18 +21,21 @@ export async function resetDb() {
   }
 }
 
+// Writes like the foundation does (tax ID encrypted) and returns the record with the plaintext tax ID.
 export async function makeCase(overrides: Partial<Prisma.KycCaseUncheckedCreateInput> = {}) {
-  return db.kycCase.create({
+  const taxId = overrides.taxId ?? "12-3456789";
+  const row = await db.kycCase.create({
     data: {
       customerName: "Test Customer",
       country: "US",
       riskScore: 30,
-      taxId: "12-3456789",
       status: "in_review",
       assignedAnalystId: ana.id,
       ...overrides,
+      taxId: encryptField(taxId),
     },
   });
+  return { ...row, taxId };
 }
 
 export function auditCount(entityId: string) {

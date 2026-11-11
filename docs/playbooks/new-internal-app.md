@@ -88,6 +88,7 @@ Notes:
 - `submits: true` records the actor in `submittedById`. `requiresChecker: true` blocks that same user (admins included).
 - Roles missing from `policy.roles` get no access at all. `scope` is row-level security; `where` filters lists in the DB and `matches` guards single records. Provide both.
 - `defineWorkflow` throws at startup if a transition names an unknown status.
+- Every `sensitiveFields` entry is also **encrypted at rest** by the data helpers and stored only masked in audit snapshots. Consequences: declare sensitive fields as `String` in Prisma; don't filter or sort on them in `where`/`orderBy` (the DB holds ciphertext); fixtures that write with `db` directly must use `encryptField()` (see `makeCase` in `tests/helpers.ts`). Apps never import `@/foundation/crypto`.
 
 ## 5. service.ts, actions.ts, screens, manifest
 
@@ -136,7 +137,7 @@ Then add it to the array in `src/apps/index.ts`. It appears in the nav and at `/
 
 Use `tests/helpers.ts` (seeded test users `ana`, `omar`, `sofia`, `raj`, `grace`, `maya`; add a `make<Entity>()` fixture). Fixtures may use `db` directly; assertions must go through the app's service. Cover:
 1. **Row access**: a scoped role cannot `get`/`update` a record outside its scope (`ForbiddenError`), and its list excludes those records.
-2. **Masking**: each sensitive field is masked for roles without permission and visible to roles with it (in records and in `getRecordHistory`).
+2. **Masking and encryption**: each sensitive field is masked for roles without permission and visible to roles with it; it is masked in `getRecordHistory` for every role; the raw DB row and raw `AuditLog` rows never contain the plaintext (see `tests/encryption.test.ts`).
 3. **Maker-checker**: the user who performed the `submits` transition gets `MakerCheckerError` on each `requiresChecker` transition; a different checker succeeds.
 4. **Invalid transitions**: wrong from-status, unknown transition and terminal statuses throw `TransitionError`; a role not granted a transition gets `ForbiddenError`; the status is unchanged afterwards.
 5. **Audit**: every service mutation (create, each update kind, each transition) writes exactly one `AuditLog` row with correct `action`, actor, `before` and `after`; rejected mutations write none.
@@ -147,7 +148,7 @@ Use `tests/helpers.ts` (seeded test users `ana`, `omar`, `sofia`, `raj`, `grace`
 
 - [ ] `npm install && npm run setup && npm run dev` works from a clean checkout (`npm run db:reset` re-seeds)
 - [ ] `npm test`, `npm run lint`, `npm run typecheck` all pass
-- [ ] Nothing in `src/apps/<app>` imports Prisma, the db client, audit internals or mocks; no `fetch`
+- [ ] Nothing in `src/apps/<app>` imports Prisma, the db client, audit internals, crypto or mocks; no `fetch`
 - [ ] No foundation changes other than: model type re-export, a new adapter (if needed), StatusBadge tones. Anything else is flagged in the PR description
 - [ ] App appears in the nav for roles with `read`, and is hidden for others
 - [ ] Verified in the browser as one user per role: list scope, masking, buttons by role and status, maker-checker disabled button, audit history updates after each action, global Audit log shows the entries with `app=<id>`

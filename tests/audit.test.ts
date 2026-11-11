@@ -21,7 +21,8 @@ describe("audit log", () => {
     const e = await onlyEntry((created as { id: string }).id);
     expect(e).toMatchObject({ action: "create", actorId: grace.id, actorRole: "admin", app: "kyc", entityType: "KycCase" });
     expect(e.before).toBeNull();
-    expect(e.after).toMatchObject({ customerName: "New Co", status: "new", taxId: "11-1111111" });
+    expect(e.after).toMatchObject({ customerName: "New Co", status: "new" });
+    expect(e.after.taxId).not.toContain("11-111");
   });
 
   it("update writes exactly one entry with correct before/after", async () => {

@@ -6,7 +6,8 @@ export default defineConfig({
   test: {
     environment: "node",
     globalSetup: ["./tests/global-setup.ts"],
-    env: { DATABASE_URL: "file:./test.db" },
+    // Fixed, test-only key (not a secret).
+    env: { DATABASE_URL: "file:./test.db", FIELD_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64") },
     fileParallelism: false,
   },
 });

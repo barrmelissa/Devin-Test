@@ -54,7 +54,8 @@ tests/                   Vitest suites
 
 Key pieces:
 - **Access control.** Roles are defined once in `src/foundation/access/roles.ts`. Each app's policy maps roles to actions (`read`/`create`/`update`/`transition`), row scope (e.g. analysts see only their assigned cases) and which sensitive fields each role sees unmasked. Enforced server-side in every data helper; the UI only uses `can()` to decide what to show.
-- **Audit log.** Append-only (no update/delete path exists): actor id/name/role, app, entity type and id, action, before JSON, after JSON, timestamp. Raw values are stored; sensitive fields are masked for the viewer at read time. The `/audit` page (admin and auditor) filters by app, actor and entity, and each record has its own history panel.
+- **Sensitive data at rest.** Every field listed in a policy's `sensitiveFields` (KYC: `taxId`) is encrypted with AES-256-GCM by the data helpers before it is written and decrypted after it is read (`src/foundation/crypto`). Apps never see ciphertext or the key. The key is `FIELD_ENCRYPTION_KEY` in `.env` (`npm run setup` generates one); in production it would come from a KMS. Encrypted fields can't be filtered or sorted in the database.
+- **Audit log.** Append-only (no update/delete path exists): actor id/name/role, app, entity type and id, action, before JSON, after JSON, timestamp. Sensitive fields are stored in masked form only (e.g. `••••••7365`), so audit snapshots never hold plaintext or ciphertext. The `/audit` page (admin and auditor) filters by app, actor and entity, and each record has its own history panel.
 - **Approvals.** Each app declares statuses and transitions (from → to, allowed roles). A transition marked `submits` records the maker; one marked `requiresChecker` cannot be done by that same user. Invalid transitions, disallowed roles and maker-checker violations are rejected server-side.
 - **Integrations.** One adapter interface per external system (`KycVendorAdapter`, `PaymentsAdapter`, `NotificationsAdapter`), all mocked. Notifications log "Slack" messages to the console and the `Notification` table. Config comes from `.env` via `integrations/config.ts`.
 - **Identity.** `getCurrentUser()` reads a cookie set by the header switcher. **This is where Okta / Entra ID SSO plugs in**: replace it with an OIDC session lookup and map IdP groups to the roles in `roles.ts`.
@@ -63,7 +64,7 @@ Key pieces:
 
 | Power Platform | This foundation |
 |---|---|
-| Dataverse security roles, row-level and column-level security | `roles.ts` + per-app `definePolicy` (actions, row `scope`, `sensitiveFields` masking), enforced by `can()` in the data helpers |
+| Dataverse security roles, row-level and column-level security | `roles.ts` + per-app `definePolicy` (actions, row `scope`, `sensitiveFields` masking and encryption at rest), enforced by `can()` in the data helpers |
 | Power Platform / Dataverse auditing | `AuditLog` written automatically by every mutation helper; `/audit` page and per-record history |
 | Power Automate approvals | `defineWorkflow` state machine + maker-checker (`submits` / `requiresChecker`) |
 | Connectors | Adapters in `src/foundation/integrations` behind interfaces, with config in one place |
