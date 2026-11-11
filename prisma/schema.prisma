@@ -13,12 +13,15 @@ model User {
   id    String @id @default(cuid())
   name  String
   email String @unique
-  role  String // analyst | senior_reviewer | admin | auditor | support_agent | finance_approver (see src/foundation/access/roles.ts)
+  role  String // see src/foundation/access/roles.ts
 
   assignedKycCases  KycCase[] @relation("KycAssignedAnalyst")
   submittedKycCases KycCase[] @relation("KycSubmittedBy")
   requestedRefunds  RefundRequest[] @relation("RefundRequestedBy")
   approvedRefunds   RefundRequest[] @relation("RefundApprovedBy")
+
+  changedFeatureFlags      FeatureFlag[] @relation("FlagLastChangedBy")
+  requestedFlagProdChanges FeatureFlag[] @relation("FlagProdChangeRequestedBy")
 }
 
 // Append-only. The foundation exposes no update/delete path for this table.
@@ -100,4 +103,35 @@ model RefundRequest {
 
   @@index([status])
   @@index([requestedById])
+}
+
+// ---- App: Feature-flag admin ----
+// The pending prod change request lives on the flag (one at a time): prodChangeStatus is the
+// workflow status and prodChangeRequestedById the maker, so every request/decision is audited
+// on the flag itself with full before/after values.
+model FeatureFlag {
+  id                        String    @id @default(cuid())
+  key                       String    @unique
+  description               String
+  ownerTeam                 String
+  devEnabled                Boolean   @default(false)
+  stagingEnabled            Boolean   @default(false)
+  prodEnabled               Boolean   @default(false)
+  prodRolloutPercent        Int       @default(0)
+  prodChangeStatus          String    @default("none") // none | pending | approved | rejected
+  pendingProdEnabled        Boolean?
+  pendingProdRolloutPercent Int?
+  prodChangeReason          String?
+  prodChangeRequestedById   String?
+  prodChangeRequestedBy     User?     @relation("FlagProdChangeRequestedBy", fields: [prodChangeRequestedById], references: [id])
+  prodChangeRequestedAt     DateTime?
+  flagServiceChangeId       String?
+  lastChangedById           String
+  lastChangedBy             User      @relation("FlagLastChangedBy", fields: [lastChangedById], references: [id])
+  lastChangedAt             DateTime  @default(now())
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+
+  @@index([prodChangeStatus])
+  @@index([ownerTeam])
 }

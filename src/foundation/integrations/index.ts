@@ -1,4 +1,5 @@
 import { integrationConfig } from "./config";
+import { MockFlagServiceAdapter } from "./mocks/flag-service";
 import { MockKycVendorAdapter } from "./mocks/kyc-vendor";
 import { MockNotificationsAdapter } from "./mocks/notifications";
 import { MockPaymentsAdapter } from "./mocks/payments";
@@ -16,6 +17,7 @@ export function getAdapters(): Adapters {
       kycVendor: new MockKycVendorAdapter(),
       payments: new MockPaymentsAdapter(),
       notifications: new MockNotificationsAdapter(integrationConfig.slack.defaultChannel),
+      flagService: new MockFlagServiceAdapter(),
     };
   }
   return adapters;

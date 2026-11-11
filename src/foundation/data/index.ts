@@ -232,4 +232,4 @@ export async function transitionRecord<T>(
 }
 
 export { defineEntity, type EntityDef } from "./entities";
-export type { KycCase, RefundRequest, User } from "./models";
+export type { FeatureFlag, KycCase, RefundRequest, User } from "./models";

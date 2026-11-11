@@ -6,6 +6,8 @@ export const ROLES = {
   auditor: { label: "Auditor" },
   support_agent: { label: "Support agent" },
   finance_approver: { label: "Finance approver" },
+  engineer: { label: "Engineer" },
+  release_manager: { label: "Release manager" },
   // Machine callers of app APIs (see identity/service-accounts.ts). Not assignable to people.
   integration: { label: "Integration (service account)" },
 } as const;

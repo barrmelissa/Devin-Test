@@ -8,5 +8,6 @@ export const integrationConfig = {
   mode: env("INTEGRATIONS_MODE", "mock") as "mock" | "live",
   kycVendor: { url: env("KYC_VENDOR_API_URL"), apiKey: env("KYC_VENDOR_API_KEY") },
   payments: { url: env("PAYMENTS_API_URL"), apiKey: env("PAYMENTS_API_KEY") },
+  flagService: { url: env("FLAG_SERVICE_API_URL"), apiKey: env("FLAG_SERVICE_API_KEY") },
   slack: { webhookUrl: env("SLACK_WEBHOOK_URL"), defaultChannel: env("SLACK_DEFAULT_CHANNEL", "#ops") },
 };

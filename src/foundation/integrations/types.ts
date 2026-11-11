@@ -21,8 +21,25 @@ export interface NotificationsAdapter {
   send(input: NotificationInput): Promise<void>;
 }
 
+export type FlagEnvironment = "dev" | "staging" | "prod";
+export type FlagChange = {
+  key: string;
+  environment: FlagEnvironment;
+  enabled: boolean;
+  rolloutPercent: number;
+  requestedBy: string;
+  approvedBy: string;
+};
+export type FlagChangeResult = { changeId: string; appliedAt: Date };
+
+/** The external feature-flag service (e.g. LaunchDarkly). */
+export interface FlagServiceAdapter {
+  applyChange(change: FlagChange): Promise<FlagChangeResult>;
+}
+
 export type Adapters = {
   kycVendor: KycVendorAdapter;
   payments: PaymentsAdapter;
   notifications: NotificationsAdapter;
+  flagService: FlagServiceAdapter;
 };

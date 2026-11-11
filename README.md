@@ -2,7 +2,7 @@
 
 A proof of concept showing that the internal tools now built in Microsoft Power Apps (KYC review queue, refunds dashboard, feature-flag admin, and 10+ more) can live in their own codebase on a shared foundation that gives every app the governance Power Apps provides: **access control, audit logging, approvals and integrations**.
 
-This repo contains the foundation plus the first app, the **KYC review queue**. New apps are added with [`docs/playbooks/new-internal-app.md`](docs/playbooks/new-internal-app.md).
+This repo contains the foundation plus two apps, the **KYC review queue** and the **Feature-flag admin**. New apps are added with [`docs/playbooks/new-internal-app.md`](docs/playbooks/new-internal-app.md).
 
 > Prototype, not production software. See [Out of scope](#out-of-scope).
 
@@ -26,6 +26,8 @@ Use the **Signed in as** switcher in the header to change user. Seeded users (tw
 | senior_reviewer | Sofia, Raj | All cases; tax ID visible; create cases ("New case"); approve or reject pending cases (not ones they submitted); send back; resume escalated |
 | admin | Grace, Hiro | Everything plus the audit log and "Simulate new signup"; still bound by maker-checker |
 | auditor | Maya, Leo | Read-only access to all cases (tax ID masked) and the audit log |
+| engineer | Nina, Sam | No KYC access (Feature-flag admin only, see below) |
+| release_manager | Elena, Diana | No KYC access (Feature-flag admin only, see below) |
 
 Demo tip: open "Chen Wei" as Sofia. She submitted it, so Approve is disabled. Switch to Raj and approve it, then check the case history and **Audit log**. The mock Slack message prints in the `npm run dev` console.
 
@@ -60,6 +62,27 @@ Demo tip: open "Chen Wei" as Sofia. She submitted it, so Approve is disabled. Sw
 | auditor | Maya, Leo | Read-only, plus the audit log |
 
 Analysts and senior reviewers have no Refunds access, and the new roles have no KYC access. Demo tip: as Grace, open "Contoso Fitness" (she requested it, so Approve is disabled); switch to Fatima to approve, then **Process refund**. Open "Diego Alvarez" as Fatima and process it to see a failure.
+
+### Feature-flag admin
+
+![Feature-flag admin: flag list as an engineer](docs/screenshots/feature-flags.png)
+
+`/apps/feature-flags`: every flag with its dev, staging and prod state, owner team and who last changed it.
+
+- **Dev and staging** toggles apply immediately (engineer, admin).
+- **Prod** never changes directly. The prod toggle opens a change request (on/off, rollout 0-100%, reason) that goes `pending → approved | rejected`. Release managers and admins decide on the **Pending prod changes** page or the flag's detail page, never on their own request. On approval the change is pushed through the mock `FlagServiceAdapter` and a Slack message goes to `#releases` (both print in the `npm run dev` console).
+- **Change history:** each flag's detail page shows its audit trail with before → after values for every create, toggle, request and decision.
+- **New flag** (engineer, admin): key (unique, lowercase snake_case), description, owner team. New flags start off everywhere.
+
+| Role | What they see in Feature-flag admin |
+|---|---|
+| engineer | Create flags, toggle dev/staging, request prod changes |
+| release_manager | Read everything; approve or reject pending prod changes (not their own) |
+| admin | Everything; still bound by maker-checker |
+| auditor | Read-only, plus the audit log |
+| analyst, senior_reviewer | No access (hidden from the nav) |
+
+Demo tip: as Grace (admin), open `legacy_invoice_pdf`. She requested the prod change, so Approve is disabled. Switch to Elena and approve it from **Pending prod changes**, then check the flag's history and the **Audit log** (`app = feature-flags`).
 
 ## Architecture
 
@@ -111,7 +134,7 @@ Key pieces:
 |---|---|---|
 | KYC review queue | `/apps/kyc` | Built |
 | Refunds dashboard | `/apps/refunds` | Built (uses `PaymentsAdapter`, `NotificationsAdapter`) |
-| Feature-flag admin | `/apps/flags` | Next session |
+| Feature-flag admin | `/apps/feature-flags` | Built (uses `FlagServiceAdapter`, `NotificationsAdapter`) |
 
 ## Adding an app
 
@@ -119,4 +142,4 @@ Follow [`docs/playbooks/new-internal-app.md`](docs/playbooks/new-internal-app.md
 
 ## Out of scope
 
-Real SSO, deployment/hosting, mobile, real external APIs (all adapters are mocks), the feature-flag app, pagination, and visual polish beyond clean and consistent. SQLite is used locally; the schema avoids SQLite-only features (no enums, JSON stored as text) so it can move to Postgres by changing the datasource provider and regenerating migrations.
+Real SSO, deployment/hosting, mobile, real external APIs (all adapters are mocks), pagination, and visual polish beyond clean and consistent. SQLite is used locally; the schema avoids SQLite-only features (no enums, JSON stored as text) so it can move to Postgres by changing the datasource provider and regenerating migrations.
