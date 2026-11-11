@@ -13,6 +13,10 @@ const users = [
   { id: "u_hiro", name: "Hiro (admin)", email: "hiro@example.com", role: "admin" },
   { id: "u_maya", name: "Maya (auditor)", email: "maya@example.com", role: "auditor" },
   { id: "u_leo", name: "Leo (auditor)", email: "leo@example.com", role: "auditor" },
+  { id: "u_priya", name: "Priya (engineer)", email: "priya@example.com", role: "engineer" },
+  { id: "u_tom", name: "Tom (engineer)", email: "tom@example.com", role: "engineer" },
+  { id: "u_elena", name: "Elena (release manager)", email: "elena@example.com", role: "release_manager" },
+  { id: "u_marcus", name: "Marcus (release manager)", email: "marcus@example.com", role: "release_manager" },
 ];
 
 type Seed = {
@@ -63,10 +67,86 @@ const cases: Seed[] = [
   { customerName: "Blue Horizon Ventures", country: "KY", riskScore: 84, taxId: "KY-CR-339201", status: "escalated", assignedAnalystId: "u_ana", notes: "[Ana (analyst)] Shell company indicators." },
 ];
 
+// Feature-flag admin. `pending` seeds an open prod change request (requested by `by`).
+type FlagSeed = {
+  key: string;
+  description: string;
+  ownerTeam: string;
+  dev: boolean;
+  staging: boolean;
+  prod: boolean;
+  rollout: number;
+  changedBy: string;
+  status?: "approved" | "rejected";
+  pending?: { enabled: boolean; rollout: number; reason: string; by: string };
+};
+
+const flags: FlagSeed[] = [
+  { key: "new_checkout_flow", description: "Single-page checkout with saved payment methods", ownerTeam: "checkout", dev: true, staging: true, prod: true, rollout: 25, changedBy: "u_elena", status: "approved",
+    pending: { enabled: true, rollout: 50, reason: "Conversion +2.1% at 25% with no error-rate change. Next step of the ramp; roll back by setting 25%.", by: "u_priya" } },
+  { key: "apple_pay", description: "Offer Apple Pay at checkout on Safari and iOS", ownerTeam: "payments", dev: true, staging: true, prod: true, rollout: 100, changedBy: "u_marcus", status: "approved" },
+  { key: "instant_payouts", description: "Same-day payouts for verified merchants", ownerTeam: "payments", dev: true, staging: true, prod: false, rollout: 0, changedBy: "u_tom",
+    pending: { enabled: true, rollout: 10, reason: "Staging soak finished (7 days, no reconciliation breaks). Start with 10% of verified merchants.", by: "u_tom" } },
+  { key: "legacy_invoice_pdf", description: "Old invoice PDF renderer (kill switch for the new one)", ownerTeam: "platform", dev: false, staging: false, prod: true, rollout: 100, changedBy: "u_grace",
+    pending: { enabled: false, rollout: 0, reason: "New renderer is at 100% for 30 days; retire the legacy path.", by: "u_grace" } },
+  { key: "risk_score_v2", description: "New fraud model for card-not-present payments", ownerTeam: "risk", dev: true, staging: true, prod: true, rollout: 10, changedBy: "u_elena", status: "approved",
+    pending: { enabled: true, rollout: 100, reason: "Model looks good, go to 100%.", by: "u_priya" } },
+  { key: "search_typo_tolerance", description: "Fuzzy matching in merchant search", ownerTeam: "search", dev: true, staging: true, prod: true, rollout: 100, changedBy: "u_marcus", status: "approved" },
+  { key: "onboarding_doc_upload_v2", description: "Drag-and-drop KYC document upload with auto-crop", ownerTeam: "onboarding", dev: true, staging: true, prod: false, rollout: 0, changedBy: "u_elena", status: "rejected" },
+  { key: "dark_mode", description: "Dark theme in the merchant dashboard", ownerTeam: "growth", dev: true, staging: false, prod: false, rollout: 0, changedBy: "u_priya" },
+  { key: "mobile_biometric_login", description: "Face ID / fingerprint login in the mobile app", ownerTeam: "mobile", dev: true, staging: true, prod: true, rollout: 50, changedBy: "u_hiro", status: "approved" },
+  { key: "referral_banner", description: "Referral program banner on the home page", ownerTeam: "growth", dev: true, staging: true, prod: false, rollout: 0, changedBy: "u_marcus", status: "approved" },
+  { key: "multi_currency_wallet", description: "Hold balances in EUR, GBP and USD", ownerTeam: "payments", dev: true, staging: false, prod: false, rollout: 0, changedBy: "u_tom" },
+  { key: "rate_limit_strict_mode", description: "Stricter API rate limits for unauthenticated calls", ownerTeam: "platform", dev: true, staging: true, prod: true, rollout: 100, changedBy: "u_hiro", status: "approved" },
+  { key: "sanctions_rescreen_nightly", description: "Nightly re-screening of all merchants against sanctions lists", ownerTeam: "risk", dev: true, staging: true, prod: false, rollout: 0, changedBy: "u_priya" },
+  { key: "saved_carts", description: "Persist carts across devices for signed-in shoppers", ownerTeam: "checkout", dev: false, staging: false, prod: false, rollout: 0, changedBy: "u_tom" },
+  { key: "search_semantic_ranking", description: "Embedding-based ranking for search results", ownerTeam: "search", dev: true, staging: true, prod: true, rollout: 5, changedBy: "u_marcus", status: "rejected" },
+];
+
+async function seedFlags(now: number) {
+  for (const [i, f] of flags.entries()) {
+    const createdAt = new Date(now - (flags.length - i + 20) * 24 * 60 * 60 * 1000);
+    const lastChangedAt = new Date(now - (flags.length - i + 2) * 24 * 60 * 60 * 1000);
+    const created = await prisma.featureFlag.create({
+      data: {
+        key: f.key, description: f.description, ownerTeam: f.ownerTeam,
+        devEnabled: f.dev, stagingEnabled: f.staging, prodEnabled: f.prod, prodRolloutPercent: f.rollout,
+        prodChangeStatus: f.status ?? "none",
+        flagServiceChangeId: f.status === "approved" ? `fsc_seed_${i + 1}` : null,
+        lastChangedById: f.changedBy, lastChangedAt, createdAt,
+      },
+    });
+    await prisma.auditLog.create({
+      data: {
+        actorId: "system", actorName: "Seed script", actorRole: "system", app: "feature-flags", entityType: "FeatureFlag",
+        entityId: created.id, action: "create", before: null, after: JSON.stringify(created), createdAt,
+      },
+    });
+    if (f.pending) {
+      const requester = users.find((u) => u.id === f.pending!.by)!;
+      const requestedAt = new Date(now - (flags.length - i) * 60 * 60 * 1000);
+      const requested = await prisma.featureFlag.update({
+        where: { id: created.id },
+        data: {
+          prodChangeStatus: "pending", prodChangeRequestedById: requester.id, prodChangeRequestedAt: requestedAt,
+          pendingProdEnabled: f.pending.enabled, pendingProdRolloutPercent: f.pending.rollout, prodChangeReason: f.pending.reason,
+        },
+      });
+      await prisma.auditLog.create({
+        data: {
+          actorId: requester.id, actorName: requester.name, actorRole: requester.role, app: "feature-flags", entityType: "FeatureFlag",
+          entityId: created.id, action: "status_change:request", before: JSON.stringify(created), after: JSON.stringify(requested), createdAt: requestedAt,
+        },
+      });
+    }
+  }
+}
+
 async function main() {
   await prisma.notification.deleteMany();
   await prisma.auditLog.deleteMany();
   await prisma.kycCase.deleteMany();
+  await prisma.featureFlag.deleteMany();
   await prisma.user.deleteMany();
 
   for (const u of users) await prisma.user.create({ data: u });
@@ -93,7 +173,9 @@ async function main() {
     });
   }
 
-  console.log(`Seeded ${users.length} users and ${cases.length} KYC cases.`);
+  await seedFlags(now);
+
+  console.log(`Seeded ${users.length} users, ${cases.length} KYC cases and ${flags.length} feature flags.`);
 }
 
 main()

@@ -10,13 +10,18 @@ export const sofia: Principal = { id: "t_sofia", name: "Sofia (senior reviewer)"
 export const raj: Principal = { id: "t_raj", name: "Raj (senior reviewer)", role: "senior_reviewer" };
 export const grace: Principal = { id: "t_grace", name: "Grace (admin)", role: "admin" };
 export const maya: Principal = { id: "t_maya", name: "Maya (auditor)", role: "auditor" };
+export const priya: Principal = { id: "t_priya", name: "Priya (engineer)", role: "engineer" };
+export const tom: Principal = { id: "t_tom", name: "Tom (engineer)", role: "engineer" };
+export const elena: Principal = { id: "t_elena", name: "Elena (release manager)", role: "release_manager" };
+export const marcus: Principal = { id: "t_marcus", name: "Marcus (release manager)", role: "release_manager" };
 
 export async function resetDb() {
   await db.notification.deleteMany();
   await db.auditLog.deleteMany();
   await db.kycCase.deleteMany();
+  await db.featureFlag.deleteMany();
   await db.user.deleteMany();
-  for (const u of [ana, omar, sofia, raj, grace, maya]) {
+  for (const u of [ana, omar, sofia, raj, grace, maya, priya, tom, elena, marcus]) {
     await db.user.create({ data: { ...u, email: `${u.id}@example.com` } });
   }
 }
@@ -36,6 +41,12 @@ export async function makeCase(overrides: Partial<Prisma.KycCaseUncheckedCreateI
     },
   });
   return { ...row, taxId };
+}
+
+export async function makeFlag(overrides: Partial<Prisma.FeatureFlagUncheckedCreateInput> = {}) {
+  return db.featureFlag.create({
+    data: { key: `flag_${Math.random().toString(36).slice(2, 8)}`, description: "Test flag", ownerTeam: "platform", lastChangedById: priya.id, ...overrides },
+  });
 }
 
 export function auditCount(entityId: string) {
