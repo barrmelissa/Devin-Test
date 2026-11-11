@@ -1,6 +1,6 @@
 "use server";
 
-import { formObject, formString, runAction } from "@/foundation/actions";
+import { formString, runAction, runFormAction, type FormState } from "@/foundation/actions";
 import { getCurrentUser } from "@/foundation/identity";
 import { appHref } from "@/foundation/registry";
 import { humanize } from "@/foundation/ui/StatusBadge";
@@ -9,10 +9,10 @@ import { addNote, createRefund, processRefund, transitionRefund } from "./servic
 
 const refundHref = (id: string) => appHref(APP_ID, id);
 
-export async function createRefundAction(formData: FormData) {
+export async function createRefundAction(_state: FormState, formData: FormData) {
   const user = await getCurrentUser();
-  return runAction(appHref(APP_ID, "new"), async () => {
-    const r = await createRefund(user, formObject(formData));
+  return runFormAction(formData, async (input) => {
+    const r = await createRefund(user, input);
     return {
       message: r.status === "approved" ? "Refund request submitted and auto-approved." : "Refund request submitted for finance approval.",
       redirectTo: refundHref(r.id),
