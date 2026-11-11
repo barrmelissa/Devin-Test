@@ -1,0 +1,73 @@
+// SQLite for the prototype. Kept Postgres-compatible: no enums (statuses/roles are
+// validated in code) and JSON is stored as text, so switching the provider is a one-line change.
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id    String @id @default(cuid())
+  name  String
+  email String @unique
+  role  String // analyst | senior_reviewer | admin | auditor (see src/foundation/access/roles.ts)
+
+  assignedKycCases  KycCase[] @relation("KycAssignedAnalyst")
+  submittedKycCases KycCase[] @relation("KycSubmittedBy")
+}
+
+// Append-only. The foundation exposes no update/delete path for this table.
+// Actor name/role are denormalised so entries stay accurate if a user changes later.
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String
+  actorName  String
+  actorRole  String
+  app        String
+  entityType String
+  entityId   String
+  action     String
+  before     String? // JSON
+  after      String? // JSON
+  createdAt  DateTime @default(now())
+
+  @@index([app])
+  @@index([actorId])
+  @@index([entityType, entityId])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  channel   String
+  message   String
+  app       String
+  entityId  String?
+  createdAt DateTime @default(now())
+}
+
+// ---- App: KYC review queue ----
+model KycCase {
+  id                String    @id @default(cuid())
+  customerName      String
+  country           String
+  riskScore         Int
+  taxId             String
+  status            String    @default("new")
+  assignedAnalystId String?
+  assignedAnalyst   User?     @relation("KycAssignedAnalyst", fields: [assignedAnalystId], references: [id])
+  submittedById     String?
+  submittedBy       User?     @relation("KycSubmittedBy", fields: [submittedById], references: [id])
+  recommendation    String? // approve | reject
+  vendorResult      String? // pass | fail | review
+  vendorReason      String?
+  vendorCheckedAt   DateTime?
+  notes             String    @default("")
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([status])
+  @@index([assignedAnalystId])
+}
