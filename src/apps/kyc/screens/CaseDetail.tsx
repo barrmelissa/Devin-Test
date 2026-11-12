@@ -3,9 +3,10 @@ import { can, canSeeField } from "@/foundation/access";
 import { availableTransitions } from "@/foundation/approvals";
 import type { AppScreenProps } from "@/foundation/registry";
 import { appHref } from "@/foundation/registry";
-import { ActionButtons, AuditTrail, Banner, DetailPanel, Form, PageHeader, StatusBadge, humanize } from "@/foundation/ui";
+import { ActionButtons, AuditTrail, Banner, DetailPanel, Form, HelpHint, PageHeader, StatusBadge, humanize } from "@/foundation/ui";
 import { addNoteAction, runVendorCheckAction, transitionAction } from "../actions";
 import { APP_ID, KycCaseEntity, kycPolicy, kycWorkflow } from "../entity";
+import { kycHelp } from "../help";
 import { getCase, getCaseHistory, riskBand } from "../service";
 import { RiskScore } from "./RiskScore";
 
@@ -87,10 +88,14 @@ export async function CaseDetail({ user, id, searchParams }: Omit<AppScreenProps
                     fields: { id: kase.id, transition: t.name },
                     variant: t.variant,
                     disabledReason: t.reason,
+                    hint: t.name === "approve" ? <HelpHint text={kycHelp.hints.approve} transition={kycWorkflow.transitions.approve} /> : undefined,
                   }))}
                 />
                 {submit && (
                   <div className="border-t border-slate-100 pt-3">
+                    <div className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-700">
+                      {submit.label} <HelpHint text={kycHelp.hints.submit} transition={kycWorkflow.transitions.submit} />
+                    </div>
                     <Form action={transitionAction} hidden={{ id: kase.id, transition: "submit" }} submitLabel={submit.label} variant="primary"
                       fields={[{ name: "recommendation", label: "Recommendation", type: "select", required: true,
                         options: [{ value: "approve", label: "Approve" }, { value: "reject", label: "Reject" }] }]} />

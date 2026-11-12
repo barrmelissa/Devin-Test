@@ -8,3 +8,5 @@ export { StatusBadge, humanize } from "./StatusBadge";
 export { FilterBar } from "./FilterBar";
 export { Banner, PageHeader } from "./Banner";
 export { AuditTrail, changedFields } from "./AuditTrail";
+export { HelpHint } from "./HelpHint";
+export { GuideBanner } from "./GuideBanner";
