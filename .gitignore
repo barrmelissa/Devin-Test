@@ -5,3 +5,6 @@ next-env.d.ts
 .env
 prisma/*.db
 prisma/*.db-journal
+
+# Prisma shadow database created by migrate dev
+shadow.db

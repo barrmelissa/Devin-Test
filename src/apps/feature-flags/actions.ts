@@ -1,6 +1,6 @@
 "use server";
 
-import { formObject, formString, runAction } from "@/foundation/actions";
+import { formObject, formString, runAction, runFormAction, type FormState } from "@/foundation/actions";
 import { getCurrentUser } from "@/foundation/identity";
 import { appHref } from "@/foundation/registry";
 import { APP_ID } from "./entity";
@@ -14,10 +14,10 @@ function returnPath(formData: FormData, fallback: string) {
   return to === appHref(APP_ID) || to.startsWith(`${appHref(APP_ID)}/`) ? to : fallback;
 }
 
-export async function createFlagAction(formData: FormData) {
+export async function createFlagAction(_state: FormState, formData: FormData) {
   const user = await getCurrentUser();
-  return runAction(appHref(APP_ID, "new"), async () => {
-    const f = await createFlag(user, formObject(formData));
+  return runFormAction(formData, async (input) => {
+    const f = await createFlag(user, input);
     return { message: `Flag ${f.key} created (off in every environment).`, redirectTo: flagHref(f.id) };
   });
 }
