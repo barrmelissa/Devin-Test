@@ -3,9 +3,10 @@ import { can } from "@/foundation/access";
 import { availableTransitions } from "@/foundation/approvals";
 import type { AppScreenProps } from "@/foundation/registry";
 import { appHref } from "@/foundation/registry";
-import { ActionButtons, Banner, DataTable, PageHeader } from "@/foundation/ui";
+import { ActionButtons, Banner, DataTable, HelpHint, PageHeader } from "@/foundation/ui";
 import { decideProdChangeAction } from "../actions";
 import { APP_ID, FeatureFlagEntity, flagWorkflow } from "../entity";
+import { featureFlagsHelp } from "../help";
 import { listPendingProdChanges, prodState, type FlagWithUsers } from "../service";
 
 export async function PendingChanges({ user, searchParams }: Omit<AppScreenProps, "path">) {
@@ -17,7 +18,8 @@ export async function PendingChanges({ user, searchParams }: Omit<AppScreenProps
     return (
       <ActionButtons
         empty="Release managers decide"
-        actions={actions.map((t) => ({ label: t.label, action: decideProdChangeAction, fields: { id: f.id, transition: t.name, returnTo }, variant: t.variant, disabledReason: t.reason }))}
+        actions={actions.map((t) => ({ label: t.label, action: decideProdChangeAction, fields: { id: f.id, transition: t.name, returnTo }, variant: t.variant, disabledReason: t.reason,
+          hint: t.name === "approve" ? <HelpHint text={featureFlagsHelp.hints.approve} transition={flagWorkflow.transitions.approve} /> : undefined }))}
       />
     );
   };

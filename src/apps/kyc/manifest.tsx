@@ -1,6 +1,8 @@
 import { can } from "@/foundation/access";
 import { defineApp } from "@/foundation/registry";
+import { kycAttention } from "./attention";
 import { kycApi } from "./api";
+import { kycHelp } from "./help";
 import { APP_ID, KycCaseEntity } from "./entity";
 import { CaseDetail } from "./screens/CaseDetail";
 import { NewCase } from "./screens/NewCase";
@@ -11,6 +13,8 @@ export const kycApp = defineApp({
   name: "KYC review queue",
   description: "Review customer KYC cases, run sanctions/ID checks, and approve or reject with maker-checker.",
   canAccess: (user) => can(user, "read", { entity: KycCaseEntity }),
+  help: kycHelp,
+  attention: kycAttention,
   // Screens are awaited here so access errors surface to the shell's error handling.
   render: async ({ user, path, searchParams }) =>
     path.length === 0

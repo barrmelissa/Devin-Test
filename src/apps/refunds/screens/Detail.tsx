@@ -3,10 +3,11 @@ import { can } from "@/foundation/access";
 import { availableTransitions } from "@/foundation/approvals";
 import type { AppScreenProps } from "@/foundation/registry";
 import { appHref } from "@/foundation/registry";
-import { ActionButtons, AuditTrail, Banner, DetailPanel, Form, PageHeader, StatusBadge } from "@/foundation/ui";
+import { ActionButtons, AuditTrail, Banner, DetailPanel, Form, HelpHint, PageHeader, StatusBadge } from "@/foundation/ui";
 import { addNoteAction, processRefundAction, transitionAction } from "../actions";
 import { AUTO_APPROVE_LIMIT_CENTS } from "../config";
 import { APP_ID, MANUAL_TRANSITIONS, RefundEntity, refundWorkflow } from "../entity";
+import { refundsHelp } from "../help";
 import { formatMoney, getRefund, getRefundHistory, needsApproval, reasonLabel } from "../service";
 import { REFUND_TONES } from "./tones";
 
@@ -83,8 +84,10 @@ export async function Detail({ user, id, searchParams }: Omit<AppScreenProps, "p
                     fields: { id: refund.id, transition: t.name },
                     variant: t.variant,
                     disabledReason: t.reason,
+                    hint: t.name === "approve" ? <HelpHint text={refundsHelp.hints.approve} transition={refundWorkflow.transitions.approve} /> : undefined,
                   })),
-                  ...(process ? [{ label: "Process refund", action: processRefundAction, fields: { id: refund.id }, variant: "primary" as const, disabledReason: process.reason }] : []),
+                  ...(process ? [{ label: "Process refund", action: processRefundAction, fields: { id: refund.id }, variant: "primary" as const, disabledReason: process.reason,
+                    hint: <HelpHint text={refundsHelp.hints.process} transition={refundWorkflow.transitions.process_succeeded} /> }] : []),
                 ]}
               />
             )}

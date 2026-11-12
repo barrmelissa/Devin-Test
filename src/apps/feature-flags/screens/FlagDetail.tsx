@@ -3,9 +3,10 @@ import { can } from "@/foundation/access";
 import { availableTransitions } from "@/foundation/approvals";
 import type { AppScreenProps } from "@/foundation/registry";
 import { appHref } from "@/foundation/registry";
-import { ActionButtons, AuditTrail, Banner, DetailPanel, PageHeader, buttonClass } from "@/foundation/ui";
+import { ActionButtons, AuditTrail, Banner, DetailPanel, HelpHint, PageHeader, buttonClass } from "@/foundation/ui";
 import { decideProdChangeAction } from "../actions";
 import { APP_ID, FeatureFlagEntity, flagWorkflow } from "../entity";
+import { featureFlagsHelp } from "../help";
 import { getFlag, getFlagHistory, prodState } from "../service";
 import { ProdChangeBadge } from "./ProdChangeBadge";
 import { EnvToggle } from "./Toggle";
@@ -67,7 +68,10 @@ export async function FlagDetail({ user, id, searchParams }: Omit<AppScreenProps
           <DetailPanel
             title="Prod change request"
             actions={request && (
-              <Link href={appHref(APP_ID, flag.id, "request")} className={buttonClass("primary")}>{request.label}</Link>
+              <span className="flex items-center gap-1">
+                <Link href={appHref(APP_ID, flag.id, "request")} className={buttonClass("primary")}>{request.label}</Link>
+                <HelpHint text={featureFlagsHelp.hints.request} transition={flagWorkflow.transitions.request} />
+              </span>
             )}
           >
             {flag.prodChangeStatus === "none" ? (
@@ -101,6 +105,7 @@ export async function FlagDetail({ user, id, searchParams }: Omit<AppScreenProps
                         fields: { id: flag.id, transition: t.name, returnTo },
                         variant: t.variant,
                         disabledReason: t.reason,
+                        hint: t.name === "approve" ? <HelpHint text={featureFlagsHelp.hints.approve} transition={flagWorkflow.transitions.approve} /> : undefined,
                       }))}
                     />
                   )
