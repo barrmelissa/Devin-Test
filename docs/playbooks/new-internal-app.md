@@ -34,6 +34,8 @@ Examples below are placeholders for a hypothetical `<app>`; see the two referenc
 | Integrations used and when, including the Slack channel | Each app passes its own `channel` (section 5). Ask how failures should be demoed (section 5, mocks) |
 | Create flow: which roles create, form fields (required, ranges, options), and whether another system creates records via API | |
 | Screens | list (or dashboard with summary tiles) with filters, detail with actions, new-record form, audit history |
+| "Needs your attention" rules | Which records each role should be prompted to act on, and the priority of each (high/medium/low). See section 5 |
+| Help | Who the app is for, the key actions that need a "?" hint, and a demo path. See section 5 |
 
 Roles live in one place: `src/foundation/access/roles.ts`. Reuse the existing roles. Only add a role if the user asks for one; adding it there is the only foundation change allowed. A new role also needs:
 - 2 seed users in `prisma/seed.ts` (e.g. "Priya (support)"), so the user switcher can show it;
@@ -57,6 +59,8 @@ src/apps/<app>/screens/Detail.tsx     # detail page
 src/apps/<app>/screens/New.tsx        # create form (CreateForm), served at /apps/<app>/new
 src/apps/<app>/screens/tones.ts       # optional: StatusBadge colours for new statuses (passed as `tones`)
 src/apps/<app>/api.ts                 # optional: defineApi(...) endpoints served at /api/<app>/<route>
+src/apps/<app>/help.ts                # AppHelp: who it's for, 3-5 steps, demo path, "?" hint text (section 5)
+src/apps/<app>/attention.ts           # attention(user): items for "Needs your attention" (section 5)
 src/apps/<app>/manifest.tsx           # defineApp(...)
 src/apps/index.ts                     # register the app (edit: one line)
 tests/<app>.test.ts                   # required tests (see section 6)
@@ -192,11 +196,26 @@ Every app gets a create path that goes through the foundation, never direct DB w
 export const refundsApp = defineApp({
   id: APP_ID, name: "Refunds dashboard", description: "…",
   canAccess: (user) => can(user, "read", { entity: RefundEntity }),
+  help: refundsHelp,             // ./help.ts (required)
+  attention: refundsAttention,   // ./attention.ts (required)
   render: async ({ user, path, searchParams }) =>
     path.length === 0 ? await List({ user, searchParams }) : await Detail({ user, id: path[0], searchParams }),
 });
 ```
-Then add it to the array in `src/apps/index.ts`. It appears in the nav and at `/apps/<id>`. Do not add files under `src/app/`; the catch-all routes serve every app's screens (`/apps/<id>/...`) and endpoints (`/api/<id>/<route>`).
+Then add it to the array in `src/apps/index.ts`. The launcher (`/`), the nav, the Getting started page (`/guide`) and "Needs your attention" are all driven by the registry, so the app appears in each automatically. It appears in the nav and at `/apps/<id>`. Do not add files under `src/app/`; the catch-all routes serve every app's screens (`/apps/<id>/...`) and endpoints (`/api/<id>/<route>`).
+
+### Built-in help (required)
+`help.ts` exports an `AppHelp` (`@/foundation/registry`); see `src/apps/refunds/help.ts`.
+- `roles`: who the app is for. Must equal the roles `canAccess` lets in; `tests/launcher.test.ts` fails otherwise. The launcher card shows them.
+- `steps`: 3-5 short "how to use" steps, shown on `/guide`.
+- `demo`: 2-3 `{ as: "<seeded user name>", tryThis }` steps that walk through the main flow, including one that shows a maker-checker block. Use seed data that exists.
+- `hints`: one sentence per key action (each submit/request, approve, and any action that calls an external system) saying what happens. Render `<HelpHint text={help.hints.x} transition={workflow.transitions.x} />` next to the button (`ActionButtons` takes a `hint` per action). "Who can do this" and the maker-checker note come from the transition, so don't write roles into the text.
+
+### Needs your attention (required)
+`attention.ts` exports `attention(user): Promise<AttentionItem[]>`; see `src/apps/refunds/attention.ts`. The launcher calls it only for apps the user can access, sorts all apps' items by priority then oldest, and shows the top 8.
+- Return `[]` unless `can(user, "read", { entity })`. Read with `listRecords` (or a service list function), never a broader query, so row scope applies.
+- Keep only records the user can act on now: `canPerformTransition(user, Entity, record, "<transition>")` from `@/foundation/attention` (permission + row scope + from-status + role + maker-checker, the same checks `transitionRecord` makes). This is what hides the user's own submissions. For items with no next transition (e.g. failed refunds), check `can(user, "transition", { entity, record })` and the role list of the transition that handles them.
+- Each item: `{ id, title, detail?, priority: "high" | "medium" | "low", since, href }`. Write `title` as the action ("Approve refund: $800.00 for Jane Doe"); `since` is when it started waiting (e.g. `prodChangeRequestedAt`, `createdAt`). Agree the rules and priorities with the user (inputs table).
 
 ## 6. Required tests (`tests/<app>.test.ts`)
 
@@ -210,6 +229,7 @@ Use `tests/helpers.ts` (seeded test users `ana`, `omar`, `sofia`, `raj`, `grace`
 7. Read-only roles (auditor) cannot mutate.
 8. **Rules**: each threshold on both sides and exactly at the limit; rule-based transitions can't be triggered directly; cross-field rules throw `ValidationError` and write nothing.
 9. **Create** (see `tests/create.test.ts`): each role without `create` gets `ForbiddenError` from the service (even with invalid input) and nothing is written; a permitted create writes exactly one `AuditLog` row (`before: null`) and starts in the initial status; each validation rule (required, ranges, invalid options) throws `ValidationError` and writes nothing; status/submitter in the input are ignored (for create-as-submit, the maker is always the creating user). If there is an API: valid token → 201 with a service-account audit entry, bad token → 401, unpermitted session or cross-origin → 403, invalid body → 400 (call `handleApiRequest` with a `Request`).
+10. **Attention** (add a case to `tests/launcher.test.ts`): fixtures for each item kind plus near-misses (the user's own submission, wrong status, under a threshold, another analyst's record); assert each role sees exactly the items it can act on and no item where it is the maker; assert the priorities; an item disappears once acted on.
 
 ## 7. Definition of done
 
@@ -217,7 +237,9 @@ Use `tests/helpers.ts` (seeded test users `ana`, `omar`, `sofia`, `raj`, `grace`
 - [ ] `npm test`, `npm run lint`, `npm run typecheck` all pass
 - [ ] Nothing in `src/apps/<app>` imports Prisma, the db client, audit internals, crypto or mocks; no `fetch`
 - [ ] No foundation changes other than: Prisma model + migration, model type re-export, new roles (if asked), a new adapter or mock failure trigger (if needed). Anything else is flagged in the PR description
-- [ ] App appears in the nav for roles with `read`, and is hidden for others
+- [ ] App appears in the nav for roles with `read`, and is hidden for others; its launcher card is enabled for those roles and greyed out ("No access") for others
+- [ ] `help` declared: `roles` match access (launcher test passes), 3-5 steps, a demo path that works on seed data, and a "?" `HelpHint` next to each key action; the app's section on `/guide` reads correctly
+- [ ] `attention` declared: items filtered with `canPerformTransition` (never the user's own submissions), priorities agreed with the user, tests in `tests/launcher.test.ts`; checked in the browser as each role that should see items, plus one that should see "You're all caught up"
 - [ ] Governed create flow: `New` form for the roles with `create` (hidden and refused for others), validated by the shared `fields`; API endpoint if another system creates records
 - [ ] Verified in the browser as one user per role: list scope, masking, buttons by role and status, maker-checker disabled button, create form (and validation error), audit history updates after each action, global Audit log shows the entries with `app=<id>`
 - [ ] README "Apps" list updated (with a screenshot if asked); small logical commits; PR summary lists any shortcuts and any gaps in this playbook

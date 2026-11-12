@@ -2,7 +2,7 @@
 
 A proof of concept showing that the internal tools now built in Microsoft Power Apps (KYC review queue, refunds dashboard, feature-flag admin, and 10+ more) can live in their own codebase on a shared foundation that gives every app the governance Power Apps provides: **access control, audit logging, approvals and integrations**.
 
-This repo contains the foundation plus two apps, the **KYC review queue** and the **Feature-flag admin**. New apps are added with [`docs/playbooks/new-internal-app.md`](docs/playbooks/new-internal-app.md).
+This repo contains the foundation plus three apps: the **KYC review queue**, the **Refunds dashboard** and the **Feature-flag admin**. New apps are added with [`docs/playbooks/new-internal-app.md`](docs/playbooks/new-internal-app.md).
 
 > Prototype, not production software. See [Out of scope](#out-of-scope).
 
@@ -29,7 +29,29 @@ Use the **Signed in as** switcher in the header to change user. Seeded users (tw
 | engineer | Nina, Sam | No KYC access (Feature-flag admin only, see below) |
 | release_manager | Elena, Diana | No KYC access (Feature-flag admin only, see below) |
 
+![KYC review queue as Sofia (senior reviewer)](docs/screenshots/kyc-queue.png)
+
 Demo tip: open "Chen Wei" as Sofia. She submitted it, so Approve is disabled. Switch to Raj and approve it, then check the case history and **Audit log**. The mock Slack message prints in the `npm run dev` console.
+
+## Launcher and Getting started
+
+![Launcher as Grace (admin): Needs your attention above the app cards](docs/screenshots/launcher.png)
+
+- **Launcher (`/`)**: one card per registered app with its description, the roles it's for and an **Open** button. Apps the current role can't use are greyed out with "No access" (below, as Ana the analyst). Built entirely from the registry in `src/apps/index.ts`, so new apps appear automatically.
+- **Needs your attention**: items the current user can act on right now across all apps, highest priority then oldest first (top 8, with a count per app). Each app declares an `attention` query; items are read through the data helpers and filtered with the same permission, status and maker-checker checks the server enforces, so your own submissions never appear. "You're all caught up" when there is nothing.
+
+  | App | Item | Who sees it | Priority |
+  |---|---|---|---|
+  | KYC | Pending approval | Senior reviewers and admins who didn't submit it | High if risk ≥ 70, else medium |
+  | KYC | In review, assigned to you | The assigned analyst | Medium if risk ≥ 70, else low |
+  | Refunds | Over $500, pending approval | Finance approvers and admins who didn't request it | Medium |
+  | Refunds | Failed | Finance approvers and admins | High |
+  | Feature flags | Pending prod change | Release managers and admins who didn't request it | Medium |
+
+- **Getting started (`/guide`, header link)**: what the platform is, how the **Signed in as** switcher works, a demo path per app (which user to switch to and what to try) and how governance works. A dismissible "New here? Start with the guide" banner shows on first visit (remembered in the browser).
+- **"?" hints** next to key actions (Submit for approval, Approve, Process refund, Request prod change) explain what happens and who can do it. "Who" is read from the workflow, so it matches what the server enforces.
+
+![Launcher as Ana (analyst): apps she can't use are greyed out](docs/screenshots/launcher-analyst.png)
 
 ### Creating cases
 
@@ -98,7 +120,8 @@ src/
     ui/                  DataTable, DetailPanel, Form, ActionButtons, StatusBadge, FilterBar, AuditTrail, ...
     forms/               FieldSpec + parseInput (one field list drives create forms and server-side validation)
     api/                 defineApi + request auth (service-account bearer token or same-origin session)
-    registry/            AppManifest type + defineApp
+    registry/            AppManifest type (help, attention) + defineApp + launcher cards
+    attention/           Needs your attention: collectAttention(), canPerformTransition()
   apps/
     index.ts             app registry: one line per app; drives the nav and routing
     kyc/                 entity.ts (workflow + policy), service.ts, actions.ts, screens/, manifest.tsx
@@ -117,6 +140,8 @@ Key pieces:
 - **Integrations.** One adapter interface per external system (`KycVendorAdapter`, `PaymentsAdapter`, `NotificationsAdapter`), all mocked. Notifications log "Slack" messages to the console and the `Notification` table. Config comes from `.env` via `integrations/config.ts`.
 - **Identity.** `getCurrentUser()` reads a cookie set by the header switcher. **This is where Okta / Entra ID SSO plugs in**: replace it with an OIDC session lookup and map IdP groups to the roles in `roles.ts`. API callers authenticate as service accounts (`identity/service-accounts.ts`, bearer token from `.env`) with the `integration` role, so their writes are access-checked and audited too.
 
+![Audit log as Maya (auditor)](docs/screenshots/audit-log.png)
+
 ### How this maps to Power Apps
 
 | Power Platform | This foundation |
@@ -126,7 +151,7 @@ Key pieces:
 | Power Automate approvals | `defineWorkflow` state machine + maker-checker (`submits` / `requiresChecker`) |
 | Connectors | Adapters in `src/foundation/integrations` behind interfaces, with config in one place |
 | Entra ID sign-in | Identity stub (`src/foundation/identity`); SSO plugs in here |
-| App catalog / left nav | App registry (`src/apps/index.ts`) |
+| App catalog / left nav | App registry (`src/apps/index.ts`): drives the launcher, nav, Getting started page and Needs your attention |
 
 ## Apps
 
@@ -138,7 +163,16 @@ Key pieces:
 
 ## Adding an app
 
-Follow [`docs/playbooks/new-internal-app.md`](docs/playbooks/new-internal-app.md). In short: add a Prisma model, write `entity.ts` (workflow + policy), a `service.ts` that uses only foundation helpers, screens built from `@/foundation/ui`, a `manifest.tsx`, one line in `src/apps/index.ts`, and the required tests. A Devin session can be told "use the playbook to build a refunds dashboard".
+Follow [`docs/playbooks/new-internal-app.md`](docs/playbooks/new-internal-app.md). In short: add a Prisma model, write `entity.ts` (workflow + policy), a `service.ts` that uses only foundation helpers, screens built from `@/foundation/ui`, `help.ts` (who it's for, how-to steps, demo path, "?" hints), `attention.ts` (what needs each role's action), a `manifest.tsx`, one line in `src/apps/index.ts`, and the required tests. A Devin session can be told "use the playbook to build a refunds dashboard".
+
+## Build log
+
+Built by Devin, one row per session.
+
+| Session | What was built | PRs | Mode used |
+|---|---|---|---|
+| [Foundation, KYC, Refunds, polish](https://app.devin.ai/sessions/8ee6facfa15c4dfaac3b8e07fcb96111) | Foundation (access control, audit, approvals, integrations, registry), KYC review queue, tax-ID encryption at rest, governed create flow and KYC intake API, Refunds dashboard from the playbook, playbook gaps, create forms keeping values after errors, Feature flags fix, launcher, Needs your attention, Getting started and help hints | [#1](https://github.com/barrmelissa/Devin-Test/pull/1), [#2](https://github.com/barrmelissa/Devin-Test/pull/2), [#4](https://github.com/barrmelissa/Devin-Test/pull/4), [#5](https://github.com/barrmelissa/Devin-Test/pull/5), [#6](https://github.com/barrmelissa/Devin-Test/pull/6), this PR | Fusion (started in Fusion; later turns in Normal) |
+| [Feature-flag admin](https://app.devin.ai/sessions/337a0000fc984aef807b07c547f27feb) (child session) | Feature-flag admin app from the playbook | [#3](https://github.com/barrmelissa/Devin-Test/pull/3) | Normal |
 
 ## Out of scope
 
