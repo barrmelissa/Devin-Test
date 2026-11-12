@@ -15,12 +15,12 @@ export function DataTable<T extends { id: string }>({
   empty?: string;
 }) {
   return (
-    <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+    <div className="rounded-lg border border-slate-200 bg-white">
       <table className="min-w-full divide-y divide-slate-200 text-sm">
         <thead className="bg-slate-50">
           <tr>
             {columns.map((c) => (
-              <th key={c.key} className="px-4 py-2 text-left font-medium text-slate-600">{c.header}</th>
+              <th key={c.key} className="px-4 py-2 text-left font-medium text-slate-600 first:rounded-tl-lg last:rounded-tr-lg">{c.header}</th>
             ))}
           </tr>
         </thead>
